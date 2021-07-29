@@ -21,7 +21,6 @@
 package com.apple.foundationdb.record.provider.foundationdb;
 
 import com.apple.foundationdb.Database;
-import com.apple.foundationdb.FDB;
 import com.apple.foundationdb.Transaction;
 import com.apple.foundationdb.annotation.API;
 import com.apple.foundationdb.record.AsyncLoadingCache;
@@ -73,7 +72,7 @@ public class FDBDatabaseImpl implements FDBDatabase {
     private static final Logger LOGGER = LoggerFactory.getLogger(FDBDatabaseImpl.class);
 
     @Nonnull
-    private final FDBDatabaseFactoryImpl factory;
+    private final FDBDatabaseFactory factory;
     @Nullable
     private final String clusterFile;
     /* Null until openFDB is called. */
@@ -126,7 +125,7 @@ public class FDBDatabaseImpl implements FDBDatabase {
     private final NavigableMap<Long, FDBRecordContext> trackedOpenContexts = new ConcurrentSkipListMap<>();
 
     @VisibleForTesting
-    public FDBDatabaseImpl(@Nonnull FDBDatabaseFactoryImpl factory, @Nullable String clusterFile) {
+    public FDBDatabaseImpl(@Nonnull FDBDatabaseFactory factory, @Nullable String clusterFile) {
         this.factory = factory;
         this.clusterFile = clusterFile;
         this.asyncToSyncExceptionMapper = (ex, ev) -> FDBExceptions.wrapException(ex);
@@ -151,11 +150,10 @@ public class FDBDatabaseImpl implements FDBDatabase {
 
     protected synchronized void openFDB() {
         if (!opened) {
-            final FDB fdb = factory.initFDB();
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug(KeyValueLogMessage.of("Opening FDB", LogMessageKeys.CLUSTER, clusterFile));
             }
-            database = fdb.open(clusterFile);
+            database = factory.open(clusterFile);
             setDirectoryCacheSize(factory.getDirectoryCacheSize());
             opened = true;
         }

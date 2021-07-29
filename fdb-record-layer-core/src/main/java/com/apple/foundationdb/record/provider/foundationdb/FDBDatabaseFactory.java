@@ -20,6 +20,7 @@
 
 package com.apple.foundationdb.record.provider.foundationdb;
 
+import com.apple.foundationdb.Database;
 import com.apple.foundationdb.NetworkOptions;
 import com.apple.foundationdb.annotation.API;
 import com.apple.foundationdb.annotation.SpotBugsSuppressWarnings;
@@ -28,6 +29,7 @@ import com.apple.foundationdb.record.provider.foundationdb.storestate.PassThroug
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -57,7 +59,7 @@ public interface FDBDatabaseFactory {
      */
     long UNLIMITED_TR_TIMEOUT_MILLIS = 0L;
 
-    @Nonnull
+    @Nullable
     Executor getNetworkExecutor();
 
     void setNetworkExecutor(@Nonnull Executor networkExecutor);
@@ -362,6 +364,7 @@ public interface FDBDatabaseFactory {
      *
      * @return the current latency injector
      */
+    @Nonnull
     Function<FDBLatencySource, Long> getLatencyInjector();
 
     /**
@@ -468,4 +471,29 @@ public interface FDBDatabaseFactory {
      * @see FDBLocalityUtil
      */
     void setLocalityProvider(@Nonnull FDBLocalityProvider localityProvider);
+
+    /**
+     * Creates a new {@code Executor} for use by a specific {@code FDBRecordContext}. If {@code mdcContext}
+     * is not {@code null}, the executor will ensure that the provided MDC present within the context of the
+     * executor thread.
+     *
+     * @param mdcContext if present, the MDC context to be made available within the executors threads
+     *
+     * @return a new executor to be used by a {@code FDBRecordContext}
+     */
+    @Nonnull
+    Executor newContextExecutor(@Nullable Map<String, String> mdcContext);
+
+    @Nonnull
+    Supplier<BlockingInAsyncDetection> getBlockingInAsyncDetectionSupplier();
+
+    /**
+     * Return a {@link Database} object from the factory.
+     *
+     * @param clusterFile Cluster file.
+     *
+     * @return FDB Database object.
+     */
+    @Nonnull
+    Database open(String clusterFile);
 }
