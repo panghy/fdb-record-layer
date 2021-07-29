@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-import static com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseTest.testStoreAndRetrieveSimpleRecord;
+import static com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseImplTest.testStoreAndRetrieveSimpleRecord;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.instanceOf;
@@ -70,7 +70,7 @@ public class FDBDatabaseRunnerTest extends FDBTestBase {
 
     @BeforeEach
     public void getDatabase() {
-        database = FDBDatabaseFactory.instance().getDatabase();
+        database = FDBDatabaseFactoryImpl.instance().getDatabase();
     }
 
     @Test
@@ -451,14 +451,14 @@ public class FDBDatabaseRunnerTest extends FDBTestBase {
 
     @Test
     void testRestoreMdc() {
-        Executor oldExecutor = FDBDatabaseFactory.instance().getExecutor();
+        Executor oldExecutor = FDBDatabaseFactoryImpl.instance().getExecutor();
         try {
             ThreadContext.clearAll();
             ThreadContext.put("outer", "Echidna");
             final Map<String, String> outer = ThreadContext.getContext();
             final ImmutableMap<String, String> restored = ImmutableMap.of("restored", "Platypus");
 
-            FDBDatabaseFactory.instance().setExecutor(new ContextRestoringExecutor(
+            FDBDatabaseFactoryImpl.instance().setExecutor(new ContextRestoringExecutor(
                     new ForkJoinPool(2), ImmutableMap.of("executor", "Water Bear")));
             AtomicInteger attempts = new AtomicInteger(0);
             final FDBDatabaseRunner runner = database.newRunner(FDBRecordContextConfig.newBuilder().setMdcContext(restored));
@@ -505,7 +505,7 @@ public class FDBDatabaseRunnerTest extends FDBTestBase {
             assertEquals(expected, threadContexts);
             assertEquals(outer, ThreadContext.getContext());
         } finally {
-            FDBDatabaseFactory.instance().setExecutor(oldExecutor);
+            FDBDatabaseFactoryImpl.instance().setExecutor(oldExecutor);
         }
 
     }

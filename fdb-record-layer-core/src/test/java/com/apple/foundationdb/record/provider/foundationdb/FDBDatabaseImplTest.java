@@ -66,13 +66,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Tests for {@link FDBDatabase}.
  */
 @Tag(Tags.RequiresFDB)
-public class FDBDatabaseTest extends FDBTestBase {
+public class FDBDatabaseImplTest extends FDBTestBase {
     @Nonnull
-    private static final Logger LOGGER = LoggerFactory.getLogger(FDBDatabaseTest.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(FDBDatabaseImplTest.class);
 
     @Test
     public void cachedVersionMaintenanceOnReadsTest() throws Exception {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setTrackLastSeenVersion(true);
         FDBDatabase database = factory.getDatabase();
         assertTrue(database.isTrackLastSeenVersionOnRead());
@@ -119,7 +119,7 @@ public class FDBDatabaseTest extends FDBTestBase {
 
     @Test
     public void cachedVersionMaintenanceOnCommitTest() {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setTrackLastSeenVersion(true);
         FDBDatabase database = factory.getDatabase();
         assertTrue(database.isTrackLastSeenVersionOnRead());
@@ -141,7 +141,7 @@ public class FDBDatabaseTest extends FDBTestBase {
     @ParameterizedTest(name = "cachedReadVersionWithRetryLoops [async = {0}]")
     @BooleanSource
     public void cachedReadVersionWithRetryLoops(boolean async) throws InterruptedException, ExecutionException {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setTrackLastSeenVersion(true);
         FDBDatabase database = factory.getDatabase();
         assertTrue(database.isTrackLastSeenVersionOnRead());
@@ -178,7 +178,7 @@ public class FDBDatabaseTest extends FDBTestBase {
 
     @Test
     public void testBlockingInAsyncException() {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setBlockingInAsyncDetection(BlockingInAsyncDetection.IGNORE_COMPLETE_EXCEPTION_BLOCKING);
 
         // Make sure that we aren't holding on to previously created databases
@@ -191,12 +191,12 @@ public class FDBDatabaseTest extends FDBTestBase {
 
     @Test
     public void testBlockingInAsyncWarning() {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setBlockingInAsyncDetection(BlockingInAsyncDetection.IGNORE_COMPLETE_WARN_BLOCKING);
         factory.clear();
 
         FDBDatabase database = factory.getDatabase();
-        TestHelpers.assertLogs(FDBDatabase.class, FDBDatabase.BLOCKING_IN_ASYNC_CONTEXT_MESSAGE,
+        TestHelpers.assertLogs(FDBDatabaseImpl.class, FDBDatabase.BLOCKING_IN_ASYNC_CONTEXT_MESSAGE,
                 () -> {
                     callAsyncBlocking(database, true);
                     return null;
@@ -205,12 +205,12 @@ public class FDBDatabaseTest extends FDBTestBase {
 
     @Test
     public void testCompletedBlockingInAsyncWarning() {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setBlockingInAsyncDetection(BlockingInAsyncDetection.WARN_COMPLETE_EXCEPTION_BLOCKING);
         factory.clear();
 
         FDBDatabase database = factory.getDatabase();
-        TestHelpers.assertLogs(FDBDatabase.class, FDBDatabase.BLOCKING_IN_ASYNC_CONTEXT_MESSAGE,
+        TestHelpers.assertLogs(FDBDatabaseImpl.class, FDBDatabase.BLOCKING_IN_ASYNC_CONTEXT_MESSAGE,
                 () -> database.asyncToSync(new FDBStoreTimer(), FDBStoreTimer.Waits.WAIT_ERROR_CHECK,
                         CompletableFuture.supplyAsync(() ->
                                 database.asyncToSync(new FDBStoreTimer(), FDBStoreTimer.Waits.WAIT_ERROR_CHECK, CompletableFuture.completedFuture(10L)))));
@@ -218,35 +218,35 @@ public class FDBDatabaseTest extends FDBTestBase {
 
     @Test
     public void testBlockingCreatingAsyncDetection() throws Exception {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setBlockingInAsyncDetection(BlockingInAsyncDetection.WARN_COMPLETE_EXCEPTION_BLOCKING);
         factory.clear();
 
         FDBDatabase database = factory.getDatabase();
-        TestHelpers.assertLogs(FDBDatabase.class, FDBDatabase.BLOCKING_RETURNING_ASYNC_MESSAGE,
+        TestHelpers.assertLogs(FDBDatabaseImpl.class, FDBDatabase.BLOCKING_RETURNING_ASYNC_MESSAGE,
                 () -> returnAnAsync(database, MoreAsyncUtil.delayedFuture(200L, TimeUnit.MILLISECONDS)));
     }
 
     @Test
     public void testCompletedBlockingCreatingAsyncDetection() {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setBlockingInAsyncDetection(BlockingInAsyncDetection.WARN_COMPLETE_EXCEPTION_BLOCKING);
         factory.clear();
 
         FDBDatabase database = factory.getDatabase();
-        TestHelpers.assertDidNotLog(FDBDatabase.class, FDBDatabase.BLOCKING_RETURNING_ASYNC_MESSAGE,
+        TestHelpers.assertDidNotLog(FDBDatabaseImpl.class, FDBDatabase.BLOCKING_RETURNING_ASYNC_MESSAGE,
                 () -> returnAnAsync(database, CompletableFuture.completedFuture(10L)));
     }
 
     @ParameterizedTest(name = "testJoinNowOnCompletedFuture (behavior = {0})")
     @EnumSource(BlockingInAsyncDetection.class)
     public void testJoinNowOnCompletedFuture(BlockingInAsyncDetection behavior) {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setBlockingInAsyncDetection(behavior);
         factory.clear();
 
         FDBDatabase database = factory.getDatabase();
-        TestHelpers.assertDidNotLog(FDBDatabase.class, FDBDatabase.BLOCKING_FOR_FUTURE_MESSAGE, () -> {
+        TestHelpers.assertDidNotLog(FDBDatabaseImpl.class, FDBDatabase.BLOCKING_FOR_FUTURE_MESSAGE, () -> {
             long val = database.joinNow(CompletableFuture.completedFuture(1066L));
             assertEquals(1066L, val);
             return null;
@@ -256,7 +256,7 @@ public class FDBDatabaseTest extends FDBTestBase {
     @ParameterizedTest(name = "testJoinNowOnNonCompletedFuture (behavior = {0})")
     @EnumSource(BlockingInAsyncDetection.class)
     public void testJoinNowOnNonCompletedFuture(BlockingInAsyncDetection behavior) {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setBlockingInAsyncDetection(behavior);
         factory.clear();
 
@@ -265,7 +265,7 @@ public class FDBDatabaseTest extends FDBTestBase {
             assertThrows(BlockingInAsyncException.class, () -> database.joinNow(new CompletableFuture<>()));
         } else {
             FDBDatabase database2 = factory.getDatabase();
-            TestHelpers.assertLogs(FDBDatabase.class, FDBDatabase.BLOCKING_FOR_FUTURE_MESSAGE, () -> {
+            TestHelpers.assertLogs(FDBDatabaseImpl.class, FDBDatabase.BLOCKING_FOR_FUTURE_MESSAGE, () -> {
                 long val = database2.joinNow(MoreAsyncUtil.delayedFuture(100, TimeUnit.MILLISECONDS)
                         .thenApply(vignore -> 1066L));
                 assertEquals(1066L, val);
@@ -277,7 +277,7 @@ public class FDBDatabaseTest extends FDBTestBase {
     @Test
     public void loggableTimeoutException() {
         CompletableFuture<Void> delayed = new CompletableFuture<Void>();
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         FDBDatabase database = factory.getDatabase();
         FDBStoreTimer timer = new FDBStoreTimer();
         database.setAsyncToSyncTimeout(1, TimeUnit.MILLISECONDS);
@@ -311,14 +311,14 @@ public class FDBDatabaseTest extends FDBTestBase {
     }
 
     public void testLatencyInjection(FDBLatencySource latencySource, long expectedLatency, Consumer<FDBRecordContext> thingToDo) throws Exception {
-        final FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        final FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
 
         // Databases only pick up the latency injector upon creation, so clear out any cached database
         factory.clear();
         factory.setLatencyInjector(
                 requestedLatency -> requestedLatency == latencySource ? expectedLatency : 0L);
 
-        FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try {
             try (FDBRecordContext context = database.openContext()) {
                 long grvStart = System.currentTimeMillis();
@@ -340,7 +340,7 @@ public class FDBDatabaseTest extends FDBTestBase {
 
     @Test
     public void testPostCommitHooks() throws Exception {
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         final AtomicInteger counter = new AtomicInteger(0);
 
         try (FDBRecordContext context = database.openContext()) {
@@ -452,7 +452,7 @@ public class FDBDatabaseTest extends FDBTestBase {
 
     @Test
     public void performNoOp() {
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         FDBStoreTimer timer = new FDBStoreTimer();
         database.performNoOp(timer);
         assertEquals(1, timer.getCount(FDBStoreTimer.Events.PERFORM_NO_OP));
@@ -468,7 +468,7 @@ public class FDBDatabaseTest extends FDBTestBase {
     @Test
     public void performNoOpAgainstFakeCluster() throws IOException {
         final String clusterFile = FDBTestBase.createFakeClusterFile("perform_no_op_");
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase(clusterFile);
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase(clusterFile);
 
         // Should not be able to get a real read version from the fake cluster
         assertThrows(TimeoutException.class, () -> {
@@ -505,7 +505,7 @@ public class FDBDatabaseTest extends FDBTestBase {
     }
 
     private void testSizeAssertion(Consumer<FDBRecordContext> consumer, Class<? extends Exception> exception) {
-        FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
 
         // By default key size validation happens in the FDB driver at commit time
         try (FDBRecordContext context = database.openContext()) {

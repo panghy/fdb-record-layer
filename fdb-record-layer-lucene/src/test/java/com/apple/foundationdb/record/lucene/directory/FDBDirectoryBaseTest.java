@@ -21,7 +21,7 @@
 package com.apple.foundationdb.record.lucene.directory;
 
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBStoreTimer;
 import com.apple.foundationdb.record.provider.foundationdb.TestKeySpace;
@@ -45,7 +45,7 @@ public abstract class FDBDirectoryBaseTest {
     @BeforeEach
     public void setUp() {
         if (fdb == null) {
-            fdb = FDBDatabaseFactory.instance().getDatabase();
+            fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         }
         if (subspace == null) {
             subspace = fdb.run(context -> TestKeySpace.getKeyspacePath("record-test", "unit", "indexTest", "version").toSubspace(context));

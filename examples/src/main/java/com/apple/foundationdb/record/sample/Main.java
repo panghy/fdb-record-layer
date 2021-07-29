@@ -40,6 +40,7 @@ import com.apple.foundationdb.record.metadata.expressions.EmptyKeyExpression;
 import com.apple.foundationdb.record.metadata.expressions.GroupingKeyExpression;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBQueriedRecord;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordStore;
@@ -98,7 +99,7 @@ public class Main {
 
     public static void main(String[] args) {
         // Get a database connection.
-        FDBDatabase fdb = FDBDatabaseFactory.instance().getDatabase();
+        FDBDatabase fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
 
         // Create a subspace using the key space API to create a subspace within
         // the cluster used by this record store. The key space API in general

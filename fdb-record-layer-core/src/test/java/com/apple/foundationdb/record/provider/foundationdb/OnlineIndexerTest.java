@@ -61,25 +61,25 @@ public abstract class OnlineIndexerTest extends FDBTestBase {
 
     @BeforeAll
     public static void setUpForClass() {
-        oldInitialDelayMillis = FDBDatabaseFactory.instance().getInitialDelayMillis();
-        FDBDatabaseFactory.instance().setInitialDelayMillis(2L);
-        oldMaxDelayMillis = FDBDatabaseFactory.instance().getMaxDelayMillis();
-        FDBDatabaseFactory.instance().setMaxDelayMillis(4L);
-        oldMaxAttempts = FDBDatabaseFactory.instance().getMaxAttempts();
-        FDBDatabaseFactory.instance().setMaxAttempts(100);
+        oldInitialDelayMillis = FDBDatabaseFactoryImpl.instance().getInitialDelayMillis();
+        FDBDatabaseFactoryImpl.instance().setInitialDelayMillis(2L);
+        oldMaxDelayMillis = FDBDatabaseFactoryImpl.instance().getMaxDelayMillis();
+        FDBDatabaseFactoryImpl.instance().setMaxDelayMillis(4L);
+        oldMaxAttempts = FDBDatabaseFactoryImpl.instance().getMaxAttempts();
+        FDBDatabaseFactoryImpl.instance().setMaxAttempts(100);
     }
 
     @AfterAll
     public static void tearDownForClass() {
-        FDBDatabaseFactory.instance().setMaxDelayMillis(oldMaxDelayMillis);
-        FDBDatabaseFactory.instance().setInitialDelayMillis(oldInitialDelayMillis);
-        FDBDatabaseFactory.instance().setMaxAttempts(oldMaxAttempts);
+        FDBDatabaseFactoryImpl.instance().setMaxDelayMillis(oldMaxDelayMillis);
+        FDBDatabaseFactoryImpl.instance().setInitialDelayMillis(oldInitialDelayMillis);
+        FDBDatabaseFactoryImpl.instance().setMaxAttempts(oldMaxAttempts);
     }
 
     @BeforeEach
     public void setUp() {
         if (fdb == null) {
-            fdb = FDBDatabaseFactory.instance().getDatabase();
+            fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
             fdb.setAsyncToSyncTimeout(5, TimeUnit.MINUTES);
         }
         if (subspace == null) {

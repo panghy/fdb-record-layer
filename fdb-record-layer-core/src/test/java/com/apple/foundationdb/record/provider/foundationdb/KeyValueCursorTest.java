@@ -64,7 +64,7 @@ public class KeyValueCursorTest extends FDBTestBase {
 
     @BeforeEach
     public void runBefore() {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         subspace = fdb.run(context -> {
             KeySpacePath path = TestKeySpace.getKeyspacePath("record-test", "unit", "keyvaluecursor");
             FDBRecordStore.deleteStore(context, path);

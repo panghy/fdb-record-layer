@@ -213,7 +213,7 @@ meta-data is then up to the application.
 ## Storing a Record
 
 ```java
-    final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase(clusterFile);
+    final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase(clusterFile);
     try (FDBRecordContext context = database.openContext()) {
         RecordMetaData metaData = RecordMetaData.build(TestRecords1Proto.getDescriptor());
         FDBRecordStore recordStore = FDBRecordStore.newBuilder()

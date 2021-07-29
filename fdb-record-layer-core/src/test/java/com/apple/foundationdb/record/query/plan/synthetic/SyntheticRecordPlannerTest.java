@@ -43,7 +43,7 @@ import com.apple.foundationdb.record.metadata.expressions.GroupingKeyExpression;
 import com.apple.foundationdb.record.metadata.expressions.KeyExpression;
 import com.apple.foundationdb.record.metadata.expressions.TupleFieldsHelper;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordStore;
 import com.apple.foundationdb.record.provider.foundationdb.FDBStoreTimer;
@@ -109,7 +109,7 @@ public class SyntheticRecordPlannerTest {
         recordStoreBuilder = FDBRecordStore.newBuilder()
                 .setMetaDataProvider(metaDataBuilder);
 
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         timer = new FDBStoreTimer();
 
         fdb.run(timer, null, context -> {

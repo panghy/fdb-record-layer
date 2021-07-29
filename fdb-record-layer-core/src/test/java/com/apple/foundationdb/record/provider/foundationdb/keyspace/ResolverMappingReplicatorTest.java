@@ -25,6 +25,8 @@ import com.apple.foundationdb.Range;
 import com.apple.foundationdb.async.AsyncUtil;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBTestBase;
 import com.apple.foundationdb.record.provider.foundationdb.keyspace.KeySpaceDirectory.KeyType;
@@ -74,7 +76,7 @@ public abstract class ResolverMappingReplicatorTest extends FDBTestBase {
                         )
         );
 
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setDirectoryCacheSize(100);
         database = factory.getDatabase();
         database.clearCaches();
@@ -239,7 +241,7 @@ public abstract class ResolverMappingReplicatorTest extends FDBTestBase {
     @Test
     public void testCopyInSameDatabase() {
         ResolverMappingReplicator replicator = new ResolverMappingReplicator(primary, 10);
-        FDBDatabase differentDB = new FDBDatabase(FDBDatabaseFactory.instance(), null);
+        FDBDatabase differentDB = new FDBDatabaseImpl(FDBDatabaseFactoryImpl.instance(), null);
 
         KeySpacePath path = keySpace.path("test-path").add("to").add("replica");
         try (FDBRecordContext context = differentDB.openContext()) {

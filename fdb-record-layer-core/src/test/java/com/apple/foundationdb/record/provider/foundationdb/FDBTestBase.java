@@ -40,7 +40,7 @@ public abstract class FDBTestBase {
 
     @BeforeAll
     public static void initFDB() {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactoryImpl factory = FDBDatabaseFactoryImpl.instance();
         factory.setUnclosedWarning(true);
         factory.initFDB();
     }
@@ -56,7 +56,7 @@ public abstract class FDBTestBase {
                 LOGGER.error("Illegal value provided for " + BLOCKING_IN_ASYNC_PROPERTY + ": " + str);
                 return;
             }
-            FDBDatabaseFactory.instance().setBlockingInAsyncDetection(detection);
+            FDBDatabaseFactoryImpl.instance().setBlockingInAsyncDetection(detection);
             if (detection != BlockingInAsyncDetection.DISABLED) {
                 LOGGER.info("Blocking-in-async is " + detection);
             }

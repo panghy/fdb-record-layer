@@ -28,7 +28,7 @@ import com.apple.foundationdb.record.RecordCursorVisitor;
 import com.apple.foundationdb.record.ScanProperties;
 import com.apple.foundationdb.record.TupleRange;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordStore;
 import com.apple.foundationdb.record.provider.foundationdb.KeyValueCursor;
@@ -66,7 +66,7 @@ public class ConcatCursorTest {
 
     @BeforeEach
     public void setup() throws Exception {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         context = fdb.openContext();
         setupBaseData();
     }

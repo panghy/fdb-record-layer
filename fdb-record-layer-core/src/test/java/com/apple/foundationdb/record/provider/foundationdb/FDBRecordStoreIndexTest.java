@@ -133,7 +133,7 @@ public class FDBRecordStoreIndexTest extends FDBRecordStoreTestBase {
     @BeforeEach
     public void init() {
         // Clear the cached databases.
-        FDBDatabaseFactory.instance().clear();
+        FDBDatabaseFactoryImpl.instance().clear();
     }
 
     @Test
@@ -2550,9 +2550,9 @@ public class FDBRecordStoreIndexTest extends FDBRecordStoreTestBase {
     }
 
     public void testBoundaryPrimaryKeysImpl() {
-        final FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        final FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setLocalityProvider(MockedLocalityUtil.instance());
-        FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
 
         final String indexName = "MySimpleRecord$num_value_unique";
         try (FDBRecordContext context = database.openContext()) {
@@ -2628,9 +2628,9 @@ public class FDBRecordStoreIndexTest extends FDBRecordStoreTestBase {
     }
 
     public void testNoBoundaryPrimaryKeysImpl() {
-        final FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        final FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setLocalityProvider(MockedLocalityUtil.instance());
-        FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
 
         final String indexName = "MySimpleRecord$num_value_unique";
         try (FDBRecordContext context = database.openContext()) {
@@ -2724,7 +2724,7 @@ public class FDBRecordStoreIndexTest extends FDBRecordStoreTestBase {
     }
 
     public void testMockedLocalityUtilImpl() {
-        FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
 
         try (FDBRecordContext context = database.openContext()) {
             openSimpleRecordStore(context, TEST_SPLIT_HOOK);
@@ -2760,11 +2760,11 @@ public class FDBRecordStoreIndexTest extends FDBRecordStoreTestBase {
     }
 
     private void runLocalityTest(Runnable test) {
-        final FDBLocalityProvider origProvider = FDBDatabaseFactory.instance().getLocalityProvider();
+        final FDBLocalityProvider origProvider = FDBDatabaseFactoryImpl.instance().getLocalityProvider();
         try {
             test.run();
         } finally {
-            FDBDatabaseFactory.instance().setLocalityProvider(origProvider);
+            FDBDatabaseFactoryImpl.instance().setLocalityProvider(origProvider);
         }
     }
 }

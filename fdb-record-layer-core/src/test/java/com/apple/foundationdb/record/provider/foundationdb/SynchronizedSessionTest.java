@@ -65,7 +65,7 @@ public abstract class SynchronizedSessionTest extends FDBTestBase {
 
     @BeforeEach
     public void initializeSubspace() {
-        database = FDBDatabaseFactory.instance().getDatabase();
+        database = FDBDatabaseFactoryImpl.instance().getDatabase();
         KeySpacePath path = TestKeySpace.getKeyspacePath("record-test", "unit", "synchronizedsession");
         try (FDBRecordContext context = database.openContext()) {
             path.deleteAllData(context);

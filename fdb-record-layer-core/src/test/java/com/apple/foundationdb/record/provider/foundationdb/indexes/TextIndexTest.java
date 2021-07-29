@@ -67,7 +67,7 @@ import com.apple.foundationdb.record.provider.common.text.TextSamples;
 import com.apple.foundationdb.record.provider.common.text.TextTokenizer;
 import com.apple.foundationdb.record.provider.common.text.TextTokenizerFactory;
 import com.apple.foundationdb.record.provider.common.text.TextTokenizerRegistryImpl;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBExceptions;
 import com.apple.foundationdb.record.provider.foundationdb.FDBIndexedRecord;
 import com.apple.foundationdb.record.provider.foundationdb.FDBQueriedRecord;
@@ -3027,8 +3027,8 @@ public class TextIndexTest extends FDBRecordStoreTestBase {
 
         long startTime = System.nanoTime();
 
-        int oldMaxAttempts = FDBDatabaseFactory.instance().getMaxAttempts();
-        FDBDatabaseFactory.instance().setMaxAttempts(Integer.MAX_VALUE);
+        int oldMaxAttempts = FDBDatabaseFactoryImpl.instance().getMaxAttempts();
+        FDBDatabaseFactoryImpl.instance().setMaxAttempts(Integer.MAX_VALUE);
 
         try {
             CompletableFuture<?>[] workerFutures = new CompletableFuture<?>[10];
@@ -3070,7 +3070,7 @@ public class TextIndexTest extends FDBRecordStoreTestBase {
             LOGGER.info("performed 1000 parallel insertions in {} seconds.", (endTime - startTime) * 1e-9);
             printUsage();
         } finally {
-            FDBDatabaseFactory.instance().setMaxAttempts(oldMaxAttempts);
+            FDBDatabaseFactoryImpl.instance().setMaxAttempts(oldMaxAttempts);
         }
     }
 }

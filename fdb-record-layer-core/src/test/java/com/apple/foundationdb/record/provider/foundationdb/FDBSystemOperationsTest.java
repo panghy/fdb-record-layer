@@ -46,7 +46,7 @@ public class FDBSystemOperationsTest extends FDBTestBase {
 
     @BeforeEach
     public void setup() {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         timer = new FDBStoreTimer();
     }
 
@@ -78,7 +78,7 @@ public class FDBSystemOperationsTest extends FDBTestBase {
     @Test
     public void fakeClusterFilePath() throws IOException {
         String fakeClusterFilePath = FDBTestBase.createFakeClusterFile("readClusterFilePath");
-        final FDBDatabase fakeDatabase = FDBDatabaseFactory.instance().getDatabase(fakeClusterFilePath);
+        final FDBDatabase fakeDatabase = FDBDatabaseFactoryImpl.instance().getDatabase(fakeClusterFilePath);
         final String readClusterFilePath;
         try (FDBDatabaseRunner runner = fakeDatabase.newRunner()) {
             readClusterFilePath = FDBSystemOperations.getClusterFilePath(runner);
@@ -100,7 +100,7 @@ public class FDBSystemOperationsTest extends FDBTestBase {
             fakeConnectionString = reader.readLine();
         }
 
-        final FDBDatabase fakeDatabase = FDBDatabaseFactory.instance().getDatabase(fakeClusterFilePath);
+        final FDBDatabase fakeDatabase = FDBDatabaseFactoryImpl.instance().getDatabase(fakeClusterFilePath);
         String readConnectionString;
         try (FDBDatabaseRunner runner = fakeDatabase.newRunner()) {
             readConnectionString = FDBSystemOperations.getConnectionString(runner);

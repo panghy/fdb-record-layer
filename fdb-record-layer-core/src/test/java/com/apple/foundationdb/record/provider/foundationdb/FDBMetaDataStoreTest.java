@@ -109,7 +109,7 @@ public class FDBMetaDataStoreTest extends FDBTestBase {
 
     @BeforeEach
     public void setup() {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         fdb.run(context -> {
             openMetaDataStore(context);
             context.ensureActive().clear(metaDataStore.getSubspace().range());

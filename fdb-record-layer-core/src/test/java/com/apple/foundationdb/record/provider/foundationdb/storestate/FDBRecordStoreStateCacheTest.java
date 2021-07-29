@@ -30,7 +30,7 @@ import com.apple.foundationdb.record.TestRecords1Proto;
 import com.apple.foundationdb.record.metadata.Key;
 import com.apple.foundationdb.record.metadata.expressions.KeyExpression;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBExceptions;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordStore;
@@ -54,7 +54,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import javax.annotation.Nonnull;
-
 import java.util.Collections;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -1023,11 +1022,11 @@ public class FDBRecordStoreStateCacheTest extends FDBRecordStoreTestBase {
     @ParameterizedTest(name = "useWithDifferentDatabase (factory = {0})")
     @MethodSource("factorySource")
     public void useWithDifferentDatabase(FDBRecordStoreStateCacheFactory storeStateCacheFactory) throws Exception {
-        FDBRecordStoreStateCacheFactory currentCacheFactory = FDBDatabaseFactory.instance().getStoreStateCacheFactory();
+        FDBRecordStoreStateCacheFactory currentCacheFactory = FDBDatabaseFactoryImpl.instance().getStoreStateCacheFactory();
         try {
             String clusterFile = FDBTestBase.createFakeClusterFile("record_store_cache_");
-            FDBDatabaseFactory.instance().setStoreStateCacheFactory(readVersionCacheFactory);
-            FDBDatabase secondDatabase = FDBDatabaseFactory.instance().getDatabase(clusterFile);
+            FDBDatabaseFactoryImpl.instance().setStoreStateCacheFactory(readVersionCacheFactory);
+            FDBDatabase secondDatabase = FDBDatabaseFactoryImpl.instance().getDatabase(clusterFile);
 
             // Using the cache with a context from the wrong database shouldn't work
             try (FDBRecordContext context = openContext()) {
@@ -1044,7 +1043,7 @@ public class FDBRecordStoreStateCacheTest extends FDBRecordStoreTestBase {
             assertThat(ex.getMessage(), containsString("record store state cache used with different database"));
             assertSame(originalCache, fdb.getStoreStateCache());
         } finally {
-            FDBDatabaseFactory.instance().setStoreStateCacheFactory(currentCacheFactory);
+            FDBDatabaseFactoryImpl.instance().setStoreStateCacheFactory(currentCacheFactory);
         }
     }
 

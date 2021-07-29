@@ -24,7 +24,7 @@ import com.apple.foundationdb.Range;
 import com.apple.foundationdb.async.AsyncUtil;
 import com.apple.foundationdb.record.RecordCoreException;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBTestBase;
 import com.apple.foundationdb.record.provider.foundationdb.keyspace.ResolverResult;
@@ -67,7 +67,7 @@ class StringInterningLayerTest extends FDBTestBase {
 
     @BeforeEach
     void setup() {
-        database = FDBDatabaseFactory.instance().getDatabase();
+        database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             context.ensureActive().clear(testSubspace.range());
             context.commit();

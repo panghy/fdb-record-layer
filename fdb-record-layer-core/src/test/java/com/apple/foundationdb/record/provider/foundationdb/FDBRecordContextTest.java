@@ -107,8 +107,8 @@ public class FDBRecordContextTest extends FDBTestBase {
 
     @BeforeEach
     public void getFDB() {
-        FDBDatabaseFactory.instance().clear();
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        FDBDatabaseFactoryImpl.instance().clear();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
     }
 
     /**
@@ -579,7 +579,7 @@ public class FDBRecordContextTest extends FDBTestBase {
     @Test
     public void timeoutTalkingToFakeCluster() throws IOException {
         final String fakeClusterFile = FDBTestBase.createFakeClusterFile("for_testing_timeouts");
-        final FDBDatabase fakeFdb = FDBDatabaseFactory.instance().getDatabase(fakeClusterFile);
+        final FDBDatabase fakeFdb = FDBDatabaseFactoryImpl.instance().getDatabase(fakeClusterFile);
 
         final FDBRecordContextConfig config = FDBRecordContextConfig.newBuilder()
                 .setTransactionTimeoutMillis(100L)
@@ -603,7 +603,7 @@ public class FDBRecordContextTest extends FDBTestBase {
 
     @Test
     public void contextExecutor() {
-        final FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        final FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         final int myThreadId = ThreadId.get();
 
         try {

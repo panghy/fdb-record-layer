@@ -26,7 +26,7 @@ import com.apple.foundationdb.async.AsyncUtil;
 import com.apple.foundationdb.record.RecordCursor;
 import com.apple.foundationdb.record.RecordCursorResult;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseRunner;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBTestBase;
@@ -57,7 +57,7 @@ public class AutoContinuingCursorTest extends FDBTestBase {
 
     @BeforeEach
     public void getDatabase() {
-        database = FDBDatabaseFactory.instance().getDatabase();
+        database = FDBDatabaseFactoryImpl.instance().getDatabase();
     }
 
     private static final List<Integer> list = Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);

@@ -30,7 +30,7 @@ import com.apple.foundationdb.record.ScanProperties;
 import com.apple.foundationdb.record.ValueRange;
 import com.apple.foundationdb.record.logging.KeyValueLogMessage;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordStore;
 import com.apple.foundationdb.record.provider.foundationdb.FDBStoreTimer;
@@ -287,7 +287,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                 .add("application", "com.mybiz.application2")
                 .add("metadataStore");
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         final Tuple path1Tuple;
         final Tuple path2Tuple;
         try (FDBRecordContext context = database.openContext()) {
@@ -336,7 +336,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                         .addSubdirectory(new KeySpaceDirectory("a", KeyType.STRING)
                                 .addSubdirectory(new KeySpaceDirectory("b", KeyType.STRING))));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             // Building a tuple in the correct order works
             Tuple tuple = root.path("root")
@@ -359,7 +359,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
 
         KeySpace root = new KeySpace(rootDir);
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
 
             for (KeyTypeValue kv : valueOfEveryType) {
@@ -393,7 +393,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
 
         KeySpace root = new KeySpace(rootDir);
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             // Test all constants that match the ones we created with
             for (KeyTypeValue kv : valueOfEveryType) {
@@ -422,7 +422,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
         KeySpace root = new KeySpace(
                 new DirectoryLayerDirectory("cabinet", "cabinet")
                         .addSubdirectory(new DirectoryLayerDirectory("game")));
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         final Tuple senetTuple;
         final Tuple urTuple;
         try (FDBRecordContext context = database.openContext()) {
@@ -447,7 +447,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                         .addSubdirectory(new DirectoryLayerDirectory("school_name")
                             .addSubdirectory(new DirectoryLayerDirectory("teachers", "teachers"))
                             .addSubdirectory(new DirectoryLayerDirectory("students", "students"))));
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         final Tuple teachersTuple;
         final Tuple studentsTuple;
         try (FDBRecordContext context = database.openContext()) {
@@ -480,7 +480,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
         String testRoot = "test-root-" + random.nextInt();
         ResolverCreateHooks hooks = new ResolverCreateHooks(DEFAULT_CHECK, DirWithMetadataWrapper::metadataHook);
         KeySpace root = rootForMetadataTests(testRoot, hooks, getGenerator());
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             String dir1 = "test-string-" + random.nextInt();
             String dir2 = "test-string-" + random.nextInt();
@@ -501,7 +501,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
         String testRoot = "test-root-" + random.nextInt();
         ResolverCreateHooks hooks = new ResolverCreateHooks(DEFAULT_CHECK, DirWithMetadataWrapper::metadataHook);
         KeySpace root = rootForMetadataTests(testRoot, hooks, getGenerator());
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         Tuple tuple;
         String dir = "test-string-" + random.nextInt();
         try (FDBRecordContext context = database.openContext()) {
@@ -525,7 +525,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
         String testRoot = "test-root-" + random.nextInt();
         Function<FDBRecordContext, CompletableFuture<LocatableResolver>> generator = getGenerator();
         KeySpace root = rootForMetadataTests(testRoot, generator);
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         database.setResolverStateRefreshTimeMillis(100);
         String dir = "test-string-" + random.nextInt();
         try (FDBRecordContext context = database.openContext()) {
@@ -557,7 +557,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                                 .addSubdirectory(new KeySpaceDirectory("b", KeyType.LONG)
                                         .addSubdirectory(new KeySpaceDirectory("c", KeyType.LONG)))));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             Transaction tr = context.ensureActive();
             for (int i = 0; i < 10; i++) {
@@ -621,7 +621,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                         .addSubdirectory(new KeySpaceDirectory("a", KeyType.LONG)
                                 .addSubdirectory(new KeySpaceDirectory("b", KeyType.LONG))));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             Transaction tr = context.ensureActive();
             for (int i = 0; i < 5; i++) {
@@ -670,7 +670,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                         .addSubdirectory(new KeySpaceDirectory("a", KeyType.LONG)
                                 .addSubdirectory(new KeySpaceDirectory("b", KeyType.LONG))));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             Transaction tr = context.ensureActive();
             for (int i = 0; i < 5; i++) {
@@ -715,7 +715,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
     private KeySpace rootForMetadataTests(String name,
                                           ResolverCreateHooks hooks,
                                           Function<FDBRecordContext, CompletableFuture<LocatableResolver>> generator) {
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
 
 
         KeySpace root = new KeySpace(
@@ -748,7 +748,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                         .addSubdirectory(new ConstantResolvingKeySpaceDirectory("toString", KeyType.STRING, KeySpaceDirectory.ANY_VALUE, v -> "val" + v.toString()))
                         .addSubdirectory(new ConstantResolvingKeySpaceDirectory("toWrongType", KeyType.LONG, KeySpaceDirectory.ANY_VALUE, v -> "val" + v.toString())));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             assertEquals(Tuple.from(1L, "val15"),
                     root.path("root").add("toString", 15).toTuple(context));
@@ -765,7 +765,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                     .addSubdirectory(new KeySpaceDirectory("dir2", KeyType.STRING, "b"))
                     .addSubdirectory(new KeySpaceDirectory("dir3", KeyType.LONG)));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             Tuple tuple = Tuple.from(1L, "a");
             assertEquals(tuple, root.resolveFromKey(context, tuple).toTuple());
@@ -787,7 +787,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                         .addSubdirectory(new KeySpaceDirectory("dir3", KeyType.LONG)
                                 .addSubdirectory(new DirectoryLayerDirectory("dir4"))));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         final Long fooValue;
         final Long barValue;
         try (FDBRecordContext context = database.openContext()) {
@@ -822,7 +822,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                                     .addSubdirectory(new KeySpaceDirectory("d", KeyType.BYTES)
                                         .addSubdirectory(new KeySpaceDirectory("e", KeyType.LONG))))));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             Transaction tr = context.ensureActive();
             for (int i = 0; i < 5; i++) {
@@ -890,7 +890,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                         .addSubdirectory(new KeySpaceDirectory("dir3", KeyType.STRING, "c")
                                 .addSubdirectory(new KeySpaceDirectory("dir3_1", KeyType.LONG))));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             Transaction tr = context.ensureActive();
             for (int i = 0; i < 5; i++) {
@@ -928,7 +928,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
         }
         KeySpace root = new KeySpace(dirA);
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
 
         final Map<KeyType, List<Tuple>> valuesForType = new HashMap<>();
 
@@ -1085,7 +1085,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                 .addSubdirectory(new KeySpaceDirectory(longConstDir, KeyType.LONG, 100));
         KeySpace root = new KeySpace(dirA);
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
 
         try (FDBRecordContext context = database.openContext()) {
             // Positive example.
@@ -1133,7 +1133,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                 new KeySpaceDirectory("a", KeyType.LONG, random.nextLong())
                         .addSubdirectory(new KeySpaceDirectory("b", KeyType.STRING)));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         final List<String> directoryEntries = IntStream.range(0, 10).boxed().map(i -> "val_" + i).collect(Collectors.toList());
 
         final KeySpacePath rootPath = root.path("a");
@@ -1189,7 +1189,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
         }
         KeySpace root = new KeySpace(dirA);
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             Transaction tr = context.ensureActive();
             for (KeyTypeValue kv : valueOfEveryType) {
@@ -1226,7 +1226,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
                                 .addSubdirectory(new DirectoryLayerDirectory("e", "e"))
                                 .addSubdirectory(new DirectoryLayerDirectory("f", "f"))));
 
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             Transaction tr = context.ensureActive();
 
@@ -1278,7 +1278,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
     @Test
     public void testPathWrapperExample() throws Exception {
         EnvironmentKeySpace keySpace = new EnvironmentKeySpace("production");
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
 
         // Create a tuple to represent a path to a user's main store. This will trigger the creation of the
         // necessary directory layer entries.
@@ -1377,7 +1377,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
         KeySpace keySpace = new KeySpace(
                 new KeySpaceDirectory("a", KeyType.STRING, PathA::new)
                         .addSubdirectory(new KeySpaceDirectory("b", KeyType.STRING, PathB::new)));
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             Transaction tr = context.ensureActive();
 
@@ -1402,7 +1402,7 @@ public class KeySpaceDirectoryTest extends FDBTestBase {
         KeySpace keySpace = new KeySpace(
                 new KeySpaceDirectory("a", KeyType.STRING, PathA::new)
                         .addSubdirectory(new KeySpaceDirectory("b", KeyType.STRING, PathB::new)));
-        final FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        final FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         List<KeySpacePath> path = keySpace.path("a", "foo").add("b", "bar").flatten();
         assertThat("a should be pathA", path.get(0), instanceOf(PathA.class));
         assertThat("b should be pathB", path.get(1), instanceOf(PathB.class));

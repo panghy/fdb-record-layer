@@ -22,6 +22,7 @@ package com.apple.foundationdb.record.provider.foundationdb.keyspace;
 
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBTestBase;
 import com.apple.foundationdb.record.provider.foundationdb.keyspace.ResolverCreateHooks.PreWriteCheck;
@@ -49,7 +50,7 @@ class ResolverCreateHooksTest extends FDBTestBase {
 
     @BeforeEach
     public void setup() {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         database = factory.getDatabase();
         database.clearCaches();
 

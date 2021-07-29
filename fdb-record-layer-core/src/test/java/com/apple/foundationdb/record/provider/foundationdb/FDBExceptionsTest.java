@@ -69,7 +69,7 @@ public class FDBExceptionsTest {
     @Test
     public void loggableTimeoutException() {
         CompletableFuture<Void> delayed = new CompletableFuture<Void>();
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         FDBDatabase database = factory.getDatabase();
         database.setAsyncToSyncTimeout(1, TimeUnit.MILLISECONDS);
         try {

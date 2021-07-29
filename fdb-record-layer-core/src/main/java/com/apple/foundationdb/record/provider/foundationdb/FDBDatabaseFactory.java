@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2015-2018 Apple Inc. and the FoundationDB project authors
+ * Copyright 2015-2021 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,194 +20,50 @@
 
 package com.apple.foundationdb.record.provider.foundationdb;
 
-import com.apple.foundationdb.FDB;
 import com.apple.foundationdb.NetworkOptions;
 import com.apple.foundationdb.annotation.API;
-import com.apple.foundationdb.record.RecordCoreArgumentException;
-import com.apple.foundationdb.record.RecordCoreException;
 import com.apple.foundationdb.annotation.SpotBugsSuppressWarnings;
-import com.apple.foundationdb.record.logging.KeyValueLogMessage;
 import com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCacheFactory;
 import com.apple.foundationdb.record.provider.foundationdb.storestate.PassThroughRecordStoreStateCacheFactory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * A singleton maintaining a list of {@link FDBDatabase} instances, indexed by their cluster file location.
+ * An interface for a factory that yields {@code FDBDatabase}.
  */
 @API(API.Status.STABLE)
-public class FDBDatabaseFactory {
-    private static final Logger LOGGER = LoggerFactory.getLogger(FDBDatabaseFactory.class);
-
-    protected static final Function<FDBLatencySource, Long> DEFAULT_LATENCY_INJECTOR = api -> 0L;
-
+public interface FDBDatabaseFactory {
     /**
      * The default number of entries that is to be cached, per database, from
      * {@link com.apple.foundationdb.record.provider.foundationdb.keyspace.LocatableResolver} retrieval requests.
      */
-    public static final int DEFAULT_DIRECTORY_CACHE_SIZE = 5000;
-
+    int DEFAULT_DIRECTORY_CACHE_SIZE = 5000;
     /**
      * Special value to set the transaction timeout to to indicate that transactions should use the system
      * default.
      *
      * @see #setTransactionTimeoutMillis(long)
      */
-    public static final long DEFAULT_TR_TIMEOUT_MILLIS = -1L;
-
+    long DEFAULT_TR_TIMEOUT_MILLIS = -1L;
     /**
      * Special value to set the transaction timeout to to indicate that transactions should not have any
      * timeout set at all.
      *
      * @see #setTransactionTimeoutMillis(long)
      */
-    public static final long UNLIMITED_TR_TIMEOUT_MILLIS = 0L;
-
-    private static final int API_VERSION = 630;
+    long UNLIMITED_TR_TIMEOUT_MILLIS = 0L;
 
     @Nonnull
-    private static final FDBDatabaseFactory INSTANCE = new FDBDatabaseFactory();
-    // when set to true, static options have been set on the FDB instance.
-    //made volatile because multiple FDBDatabaseFactory instances can be created technically, and thus can be racy during init
-    private static volatile boolean staticOptionsSet = false;
+    Executor getNetworkExecutor();
+
+    void setNetworkExecutor(@Nonnull Executor networkExecutor);
 
     @Nonnull
-    private FDBLocalityProvider localityProvider = FDBLocalityUtil.instance();
-
-    /* Next few null until initFDB is called */
-
-    @Nullable
-    private Executor networkExecutor = null;
-
-    @Nonnull
-    private Executor executor = ForkJoinPool.commonPool();
-
-    @Nonnull
-    private Function<Executor, Executor> contextExecutor = Function.identity();
-
-    @Nullable
-    private FDB fdb;
-    private boolean inited;
-
-    private boolean unclosedWarning = true;
-    @Nullable
-    private String traceDirectory = null;
-    @Nullable
-    private String traceLogGroup = null;
-    @Nonnull
-    private FDBTraceFormat traceFormat = FDBTraceFormat.DEFAULT;
-    private int directoryCacheSize = DEFAULT_DIRECTORY_CACHE_SIZE;
-    private boolean trackLastSeenVersion;
-    private String datacenterId;
-
-    private int maxAttempts = 10;
-    private long maxDelayMillis = 1000;
-    private long initialDelayMillis = 10;
-    private int reverseDirectoryRowsPerTransaction = FDBReverseDirectoryCache.MAX_ROWS_PER_TRANSACTION;
-    private long reverseDirectoryMaxMillisPerTransaction = FDBReverseDirectoryCache.MAX_MILLIS_PER_TRANSACTION;
-    private long stateRefreshTimeMillis = TimeUnit.SECONDS.toMillis(FDBDatabase.DEFAULT_RESOLVER_STATE_CACHE_REFRESH_SECONDS);
-    private long transactionTimeoutMillis = DEFAULT_TR_TIMEOUT_MILLIS;
-    private boolean runLoopProfilingEnabled;
-
-    //made volatile because multiple FDBDatabaseFactory instances can be created technically, and thus can be racy during init
-    private static volatile int threadsPerClientVersion = 1; //default is 1, which is basically disabled
-
-    /**
-     * The default is a log-based predicate, which can also be used to enable tracing on a more granular level
-     * (such as by request) using {@link #setTransactionIsTracedSupplier(Supplier)}.
-     */
-    @Nonnull
-    private Supplier<Boolean> transactionIsTracedSupplier = LOGGER::isTraceEnabled;
-    private long warnAndCloseOpenContextsAfterSeconds;
-    @Nonnull
-    private Supplier<BlockingInAsyncDetection> blockingInAsyncDetectionSupplier = () -> BlockingInAsyncDetection.DISABLED;
-    @Nonnull
-    private FDBRecordStoreStateCacheFactory storeStateCacheFactory = PassThroughRecordStoreStateCacheFactory.instance();
-
-    @Nonnull
-    private Function<FDBLatencySource, Long> latencyInjector = DEFAULT_LATENCY_INJECTOR;
-
-    private final Map<String, FDBDatabase> databases = new HashMap<>();
-
-
-    @Nonnull
-    public static FDBDatabaseFactory instance() {
-        return INSTANCE;
-    }
-
-    protected synchronized FDB initFDB() {
-        if (!inited) {
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug(KeyValueLogMessage.of("Starting FDB"));
-            }
-            fdb = FDB.selectAPIVersion(API_VERSION);
-            fdb.setUnclosedWarning(unclosedWarning);
-            setStaticOptions(fdb);
-            NetworkOptions options = fdb.options();
-            if (!traceFormat.isDefaultValue()) {
-                options.setTraceFormat(traceFormat.getOptionValue());
-            }
-            if (traceDirectory != null) {
-                options.setTraceEnable(traceDirectory);
-            }
-            if (traceLogGroup != null) {
-                options.setTraceLogGroup(traceLogGroup);
-            }
-            if (runLoopProfilingEnabled) {
-                options.setEnableRunLoopProfiling();
-            }
-            if (networkExecutor == null) {
-                fdb.startNetwork();
-            } else {
-                fdb.startNetwork(networkExecutor);
-            }
-            inited = true;
-        }
-        return fdb;
-    }
-
-    private static synchronized void setStaticOptions(final FDB fdb) {
-        /*
-         * There are a few FDB settings that have to be set statically, but also need to have room
-         * for configuration. For the most part, FDBDatabaseFactory is a singleton and so in _theory_ this shouldn't
-         * matter. However, in practice it is possible to create multiple factories(i.e. in test code and such),
-         * and doing so may cause problems with these settings (errors thrown, that kind of thing). To avoid that,
-         * we have to follow a somewhat goofy pattern of making those settings static, and checking to ensure that
-         * we only set those options once. This block of code does that.
-         *
-         * Note that this method is synchronized on the class; this is so that multiple concurrent attempts to
-         * init an FDBDatabaseFactory won't cause this function to fail halfway through.
-         */
-        if (!staticOptionsSet) {
-            fdb.options().setClientThreadsPerVersion(threadsPerClientVersion);
-
-            staticOptionsSet = true;
-        }
-    }
-
-    @Nonnull
-    public Executor getNetworkExecutor() {
-        return networkExecutor;
-    }
-
-    public void setNetworkExecutor(@Nonnull Executor networkExecutor) {
-        this.networkExecutor = networkExecutor;
-    }
-
-    @Nonnull
-    public Executor getExecutor() {
-        return executor;
-    }
+    Executor getExecutor();
 
     /**
      * Sets the executor that will be used for all asynchronous tasks that are produced from operations initiated
@@ -215,9 +71,7 @@ public class FDBDatabaseFactory {
      *
      * @param executor the executor to be used for asynchronous task completion
      */
-    public void setExecutor(@Nonnull Executor executor) {
-        this.executor = executor;
-    }
+    void setExecutor(@Nonnull Executor executor);
 
     /**
      * Provides a function that will be invoked when a {@link FDBRecordContext} is created, taking as input the
@@ -227,57 +81,17 @@ public class FDBDatabaseFactory {
      * creates the {@code FDBRecordContext} will be made present in the executor threads that are executing tasks.
      *
      * @param contextExecutor function to produce an executor to be used for all tasks executed on behalf of a
-     *   specific record context
+     * specific record context
      */
-    public void setContextExecutor(@Nonnull Function<Executor, Executor> contextExecutor) {
-        this.contextExecutor = contextExecutor;
-    }
+    void setContextExecutor(@Nonnull Function<Executor, Executor> contextExecutor);
 
-    /**
-     * Creates a new {@code Executor} for use by a specific {@code FDBRecordContext}. If {@code mdcContext}
-     * is not {@code null}, the executor will ensure that the provided MDC present within the context of the
-     * executor thread.
-     *
-     * @param mdcContext if present, the MDC context to be made available within the executors threads
-     * @return a new executor to be used by a {@code FDBRecordContext}
-     */
-    @Nonnull
-    protected Executor newContextExecutor(@Nullable Map<String, String> mdcContext) {
-        Executor newExecutor = contextExecutor.apply(getExecutor());
-        if (mdcContext != null) {
-            newExecutor = new ContextRestoringExecutor(newExecutor, mdcContext);
-        }
-        return newExecutor;
-    }
+    void shutdown();
 
-    public synchronized void shutdown() {
-        if (inited) {
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug(KeyValueLogMessage.of("Shutting down FDB"));
-            }
-            for (FDBDatabase database : databases.values()) {
-                database.close();
-            }
-            // TODO: Does this do the right thing yet?
-            fdb.stopNetwork();
-            inited = false;
-        }
-    }
+    void clear();
 
-    public synchronized void clear() {
-        for (FDBDatabase database : databases.values()) {
-            database.close();
-        }
-        databases.clear();
-    }
+    boolean isUnclosedWarning();
 
-    public boolean isUnclosedWarning() {
-        return unclosedWarning;
-    }
-
-    public void setUnclosedWarning(boolean unclosedWarning) {
-        this.unclosedWarning = unclosedWarning;
-    }
+    void setUnclosedWarning(boolean unclosedWarning);
 
     /**
      * Configure the client trace directory and log group. If set, this will configure the native client to
@@ -302,10 +116,7 @@ public class FDBDatabaseFactory {
      * @param traceLogGroup the value to set the log group field to in each message of {@code null} to set no group
      */
     @SpotBugsSuppressWarnings("IS2_INCONSISTENT_SYNC")
-    public void setTrace(@Nullable String traceDirectory, @Nullable String traceLogGroup) {
-        this.traceDirectory = traceDirectory;
-        this.traceLogGroup = traceLogGroup;
-    }
+    void setTrace(@Nullable String traceDirectory, @Nullable String traceLogGroup);
 
     /**
      * Set the output format for the client trace logs. This only will have any effect if
@@ -320,25 +131,18 @@ public class FDBDatabaseFactory {
      * </p>
      *
      * @param traceFormat the output format for client trace logs
+     *
      * @see #setTrace(String, String)
      * @see FDBTraceFormat
      */
-    public void setTraceFormat(@Nonnull FDBTraceFormat traceFormat) {
-        this.traceFormat = traceFormat;
-    }
+    void setTraceFormat(@Nonnull FDBTraceFormat traceFormat);
 
-    public synchronized int getDirectoryCacheSize() {
-        return directoryCacheSize;
-    }
+    int getDirectoryCacheSize();
 
     @SuppressWarnings("PMD.BooleanGetMethodName")
-    public synchronized boolean getTrackLastSeenVersion() {
-        return trackLastSeenVersion;
-    }
+    boolean getTrackLastSeenVersion();
 
-    public synchronized String getDatacenterId() {
-        return datacenterId;
-    }
+    String getDatacenterId();
 
     /**
      * Sets the number of directory layer entries that will be cached for each database that is produced by the factory.
@@ -353,26 +157,11 @@ public class FDBDatabaseFactory {
      *
      * @param directoryCacheSize the new directory cache size
      */
-    public synchronized void setDirectoryCacheSize(int directoryCacheSize) {
-        this.directoryCacheSize = directoryCacheSize;
-        for (FDBDatabase database : databases.values()) {
-            database.setDirectoryCacheSize(directoryCacheSize);
-        }
-    }
+    void setDirectoryCacheSize(int directoryCacheSize);
 
-    public synchronized void setTrackLastSeenVersion(boolean trackLastSeenVersion) {
-        this.trackLastSeenVersion = trackLastSeenVersion;
-        for (FDBDatabase database : databases.values()) {
-            database.setTrackLastSeenVersion(trackLastSeenVersion);
-        }
-    }
+    void setTrackLastSeenVersion(boolean trackLastSeenVersion);
 
-    public synchronized void setDatacenterId(String datacenterId) {
-        this.datacenterId = datacenterId;
-        for (FDBDatabase database : databases.values()) {
-            database.setDatacenterId(datacenterId);
-        }
-    }
+    void setDatacenterId(String datacenterId);
 
     /**
      * Set whether additional run-loop profiling of the FDB client is enabled. This can be useful for debugging
@@ -383,166 +172,121 @@ public class FDBDatabaseFactory {
      * sense to call this method if one also calls {@link #setTrace(String, String)}.
      *
      * @param runLoopProfilingEnabled whether run-loop profiling should be enabled
+     *
      * @see NetworkOptions#setEnableSlowTaskProfiling()
      */
-    public synchronized void setRunLoopProfilingEnabled(boolean runLoopProfilingEnabled) {
-        if (inited) {
-            throw new RecordCoreException("run loop profiling can not be enabled as the client has already started");
-        }
-        this.runLoopProfilingEnabled = runLoopProfilingEnabled;
-    }
-
-    /**
-     * Set the number of threads per FDB client version. The default value is 1.
-     *
-     * @param threadsPerClientV the number of threads per client version. Cannot be less than 1
-     */
-    public static void setThreadsPerClientVersion(int threadsPerClientV) {
-        if (staticOptionsSet) {
-            throw new RecordCoreException("threads per client version cannot be changed as the version has already been initiated");
-        }
-        if (threadsPerClientV < 1) {
-            //if the thread count is too low, disable the setting
-            threadsPerClientV = 1;
-        }
-        threadsPerClientVersion = threadsPerClientV;
-    }
-
-    public static int getThreadsPerClientVersion() {
-        return threadsPerClientVersion;
-    }
+    void setRunLoopProfilingEnabled(boolean runLoopProfilingEnabled);
 
     /**
      * Get whether additional run-loop profiling has been been enabled.
      *
      * @return whether additional run-loop profiling has been enabled
+     *
      * @see #setRunLoopProfilingEnabled(boolean)
      */
-    public boolean isRunLoopProfilingEnabled() {
-        return runLoopProfilingEnabled;
-    }
+    boolean isRunLoopProfilingEnabled();
 
     /**
      * Gets the maximum number of attempts for a database to make when running a
-     * retriable transactional operation. This is used by {@link FDBDatabase#run(java.util.function.Function) FDBDatabase.run()}
-     * and {@link FDBDatabase#runAsync(java.util.function.Function) FDBDatabase.runAsync()} to limit the number of
+     * retriable transactional operation. This is used by {@link FDBDatabase#run(Function) FDBDatabase.run()}
+     * and {@link FDBDatabase#runAsync(Function) FDBDatabase.runAsync()} to limit the number of
      * attempts that an operation is retried. The default value is 10.
+     *
      * @return the maximum number of times to run a transactional database operation
      */
-    public int getMaxAttempts() {
-        return maxAttempts;
-    }
+    int getMaxAttempts();
 
     /**
      * Sets the maximum number of attempts for a database to make when running a
-     * retriable transactional operation. This is used by {@link FDBDatabase#run(java.util.function.Function) FDBDatabase.run()}
-     * and {@link FDBDatabase#runAsync(java.util.function.Function) FDBDatabase.runAsync()} to limit the number of
+     * retriable transactional operation. This is used by {@link FDBDatabase#run(Function) FDBDatabase.run()}
+     * and {@link FDBDatabase#runAsync(Function) FDBDatabase.runAsync()} to limit the number of
      * attempts that an operation is retried. The default value is 10.
+     *
      * @param maxAttempts the maximum number of times to run a transactional database operation
+     *
      * @throws IllegalArgumentException if a non-positive number is given
      */
-    public void setMaxAttempts(int maxAttempts) {
-        if (maxAttempts <= 0) {
-            throw new RecordCoreException("Cannot set maximum number of attempts to less than or equal to zero");
-        }
-        this.maxAttempts = maxAttempts;
-    }
+    void setMaxAttempts(int maxAttempts);
 
     /**
      * Gets the maximum delay (in milliseconds) that will be applied between attempts to
-     * run a transactional database operation. This is used within {@link FDBDatabase#run(java.util.function.Function) FDBDatabase.run()}
-     * and {@link FDBDatabase#runAsync(java.util.function.Function) FDBDatabase.runAsync()} to limit the time spent
+     * run a transactional database operation. This is used within {@link FDBDatabase#run(Function)
+     * FDBDatabase.run()}
+     * and {@link FDBDatabase#runAsync(Function) FDBDatabase.runAsync()} to limit the time spent
      * between successive attempts at completing a database operation. The default value is 1000 so that
      * there will not be more than 1 second between attempts.
+     *
      * @return the maximum delay between attempts when retrying operations
      */
-    public long getMaxDelayMillis() {
-        return maxDelayMillis;
-    }
+    long getMaxDelayMillis();
 
     /**
      * Sets the maximum delay (in milliseconds) that will be applied between attempts to
-     * run a transactional database operation. This is used within {@link FDBDatabase#run(java.util.function.Function) FDBDatabase.run()}
-     * and {@link FDBDatabase#runAsync(java.util.function.Function) FDBDatabase.runAsync()} to limit the time spent
+     * run a transactional database operation. This is used within {@link FDBDatabase#run(Function)
+     * FDBDatabase.run()}
+     * and {@link FDBDatabase#runAsync(Function) FDBDatabase.runAsync()} to limit the time spent
      * between successive attempts at completing a database operation. The default is 1000 so that
      * there will not be more than 1 second between attempts.
+     *
      * @param maxDelayMillis the maximum delay between attempts when retrying operations
+     *
      * @throws IllegalArgumentException if the value is negative or less than the minimum delay
      */
-    public void setMaxDelayMillis(long maxDelayMillis) {
-        if (maxDelayMillis < 0) {
-            throw new RecordCoreException("Cannot set maximum delay milliseconds to less than or equal to zero");
-        } else if (maxDelayMillis < initialDelayMillis) {
-            throw new RecordCoreException("Cannot set maximum delay to less than minimum delay");
-        }
-        this.maxDelayMillis = maxDelayMillis;
-    }
+    void setMaxDelayMillis(long maxDelayMillis);
 
     /**
      * Gets the delay ceiling (in milliseconds) that will be applied between attempts to
-     * run a transactional database operation. This is used within {@link FDBDatabase#run(java.util.function.Function) FDBDatabase.run()}
-     * and {@link FDBDatabase#runAsync(java.util.function.Function) FDBDatabase.runAsync()} to determine how
+     * run a transactional database operation. This is used within {@link FDBDatabase#run(Function)
+     * FDBDatabase.run()}
+     * and {@link FDBDatabase#runAsync(Function) FDBDatabase.runAsync()} to determine how
      * long to wait between the first and second attempts at running a database operation.
      * The exponential backoff algorithm will choose an amount of time to wait between zero
      * and the initial delay, and will use that value each successive iteration to determine
      * how long that wait should be. The default value is 10 milliseconds.
+     *
      * @return the delay ceiling between the first and second attempts at running a database operation
      */
-    public long getInitialDelayMillis() {
-        return initialDelayMillis;
-    }
+    long getInitialDelayMillis();
 
     /**
      * Sets the delay ceiling (in milliseconds) that will be applied between attempts to
-     * run a transactional database operation. This is used within {@link FDBDatabase#run(java.util.function.Function) FDBDatabase.run()}
-     * and {@link FDBDatabase#runAsync(java.util.function.Function) FDBDatabase.runAsync()} to determine how
+     * run a transactional database operation. This is used within {@link FDBDatabase#run(Function)
+     * FDBDatabase.run()}
+     * and {@link FDBDatabase#runAsync(Function) FDBDatabase.runAsync()} to determine how
      * long to wait between the first and second attempts at running a database operation.
      * The exponential backoff algorithm will choose an amount of time to wait between zero
      * and the initial delay, and will use that value each successive iteration to determine
      * how long that wait should be. The default value is 10 milliseconds.
+     *
      * @param initialDelayMillis the delay ceiling between the first and second attempts at running a database operation
+     *
      * @throws IllegalArgumentException if the value is negative or greater than the maximum delay
      */
-    public void setInitialDelayMillis(long initialDelayMillis) {
-        if (initialDelayMillis < 0) {
-            throw new RecordCoreException("Cannot set initial delay milleseconds to less than zero");
-        } else if (initialDelayMillis > maxDelayMillis) {
-            throw new RecordCoreException("Cannot set initial delay to greater than maximum delay");
-        }
-        this.initialDelayMillis = initialDelayMillis;
-    }
+    void setInitialDelayMillis(long initialDelayMillis);
 
     /**
      * When a reverse directory lookup is performed from a {@link FDBReverseDirectoryCache} and an entry is not found
      * in the cache and, thus, the directory layer must be scanned to find it, this property determines how many rows
      * will be scanned within the context of a single transaction, before the transaction is closed and re-opened
      * in order to avoid a <code>past_version</code>.
+     *
      * @param rowsPerTransaction the number of rows to scan within the context of a single transaction
      */
-    public void setReverseDirectoryRowsPerTransaction(int rowsPerTransaction) {
-        this.reverseDirectoryRowsPerTransaction = rowsPerTransaction;
-    }
+    void setReverseDirectoryRowsPerTransaction(int rowsPerTransaction);
 
-    public int getReverseDirectoryRowsPerTransaction() {
-        return reverseDirectoryRowsPerTransaction;
-    }
+    int getReverseDirectoryRowsPerTransaction();
 
     /**
      * When a reverse directory lookup is performed from a {@link FDBReverseDirectoryCache} and an entry is not found
      * in the cache and, thus, the directory layer must be scanned to find it, this property determines how many
      * milliseconds may be spent scanning the cache within the context of a single transaction, before the transaction
      * is closed and re-opened in order to avoid a <code>past_version</code>.
+     *
      * @param millisPerTransaction the number of miliseconds to spend scanning
      */
-    public void setReverseDirectoryMaxMillisPerTransaction(long millisPerTransaction) {
-        this.reverseDirectoryMaxMillisPerTransaction = millisPerTransaction;
-    }
+    void setReverseDirectoryMaxMillisPerTransaction(long millisPerTransaction);
 
-    public long getReverseDirectoryMaxMillisPerTransaction() {
-        return reverseDirectoryMaxMillisPerTransaction;
-    }
-
-    // TODO: Demote these to UNSTABLE and deprecate at some point.
+    long getReverseDirectoryMaxMillisPerTransaction();
 
     /**
      * Use transactionIsTracedSupplier to control whether a newly created transaction should be traced or not. Traced
@@ -550,31 +294,28 @@ public class FDBDatabaseFactory {
      * transaction, it is necessary to capture a stack trace at the point the transaction is created which is a rather
      * expensive operation, so this should either be disabled in a production environment or the supplier to return
      * true for only a very small subset of transactions.
-     * @param transactionIsTracedSupplier a supplier which should return <code>true</code> for creating traced transactions
+     *
+     * @param transactionIsTracedSupplier a supplier which should return <code>true</code> for creating traced
+     * transactions
      */
-    public void setTransactionIsTracedSupplier(Supplier<Boolean> transactionIsTracedSupplier) {
-        this.transactionIsTracedSupplier = transactionIsTracedSupplier;
-    }
+    void setTransactionIsTracedSupplier(Supplier<Boolean> transactionIsTracedSupplier);
 
-    public Supplier<Boolean> getTransactionIsTracedSupplier() {
-        return transactionIsTracedSupplier;
-    }
+    Supplier<Boolean> getTransactionIsTracedSupplier();
 
     /**
      * Get whether to warn and close record contexts open for too long.
+     *
      * @return number of seconds after which a context and be closed and a warning logged
      */
-    public long getWarnAndCloseOpenContextsAfterSeconds() {
-        return warnAndCloseOpenContextsAfterSeconds;
-    }
+    long getWarnAndCloseOpenContextsAfterSeconds();
 
     /**
      * Set whether to warn and close record contexts open for too long.
-     * @param warnAndCloseOpenContextsAfterSeconds number of seconds after which a context and be closed and a warning logged
+     *
+     * @param warnAndCloseOpenContextsAfterSeconds number of seconds after which a context and be closed and a warning
+     * logged
      */
-    public void setWarnAndCloseOpenContextsAfterSeconds(long warnAndCloseOpenContextsAfterSeconds) {
-        this.warnAndCloseOpenContextsAfterSeconds = warnAndCloseOpenContextsAfterSeconds;
-    }
+    void setWarnAndCloseOpenContextsAfterSeconds(long warnAndCloseOpenContextsAfterSeconds);
 
     /**
      * Controls if calls to <code>FDBDatabase#asyncToSync(FDBStoreTimer, FDBStoreTimer.Wait, CompletableFuture)</code>
@@ -586,12 +327,11 @@ public class FDBDatabaseFactory {
      * @param behavior the blocking desired blocking detection behavior
      * (see {@link BlockingInAsyncDetection})
      */
-    public void setBlockingInAsyncDetection(@Nonnull BlockingInAsyncDetection behavior) {
-        setBlockingInAsyncDetection(() -> behavior);
-    }
+    void setBlockingInAsyncDetection(@Nonnull BlockingInAsyncDetection behavior);
 
     /**
-     * Provides a supplier that controls if calls to <code>FDBDatabase#asyncToSync(FDBStoreTimer, FDBStoreTimer.Wait, CompletableFuture)</code>
+     * Provides a supplier that controls if calls to <code>FDBDatabase#asyncToSync(FDBStoreTimer, FDBStoreTimer.Wait,
+     * CompletableFuture)</code>
      * or <code>FDBRecordContext#asyncToSync(FDBStoreTimer.Wait, CompletableFuture)</code> will attempt to detect
      * when they are being called from within an asynchronous context and how they should react to this fact
      * when they are.  Because such detection is quite expensive, it is suggested that it is either
@@ -601,18 +341,12 @@ public class FDBDatabaseFactory {
      * @param supplier a supplier that produces the blocking desired blocking detection behavior
      * (see {@link BlockingInAsyncDetection})
      */
-    public void setBlockingInAsyncDetection(@Nonnull Supplier<BlockingInAsyncDetection> supplier) {
-        this.blockingInAsyncDetectionSupplier = supplier;
-    }
-
-    @Nonnull
-    protected Supplier<BlockingInAsyncDetection> getBlockingInAsyncDetectionSupplier() {
-        return this.blockingInAsyncDetectionSupplier;
-    }
+    void setBlockingInAsyncDetection(@Nonnull Supplier<BlockingInAsyncDetection> supplier);
 
     /**
      * Provides a function that computes a latency that should be injected into a specific FDB operation.  The
-     * provided function takes a {@link FDBLatencySource} as input and returns the number of milliseconds delay that should
+     * provided function takes a {@link FDBLatencySource} as input and returns the number of milliseconds delay that
+     * should
      * be injected before the operation completes.  Returning a value of zero or less indicates that no delay should
      * be injected.
      *
@@ -621,38 +355,29 @@ public class FDBDatabaseFactory {
      *
      * @param latencyInjector a function computing the latency to be injected into an operation
      */
-    public void setLatencyInjector(@Nonnull Function<FDBLatencySource, Long> latencyInjector) {
-        this.latencyInjector = latencyInjector;
-    }
+    void setLatencyInjector(@Nonnull Function<FDBLatencySource, Long> latencyInjector);
 
     /**
      * Returns the current latency injector.
      *
      * @return the current latency injector
      */
-    public Function<FDBLatencySource, Long> getLatencyInjector() {
-        return latencyInjector;
-    }
+    Function<FDBLatencySource, Long> getLatencyInjector();
 
     /**
      * Removes any previously installed latency injector.
      */
-    public void clearLatencyInjector() {
-        this.latencyInjector = DEFAULT_LATENCY_INJECTOR;
-    }
+    void clearLatencyInjector();
 
-    public long getStateRefreshTimeMillis() {
-        return stateRefreshTimeMillis;
-    }
+    long getStateRefreshTimeMillis();
 
     /**
      * Set the refresh time for the cached {@link com.apple.foundationdb.record.provider.foundationdb.keyspace.LocatableResolver}
      * state. Defaults to {@value FDBDatabase#DEFAULT_RESOLVER_STATE_CACHE_REFRESH_SECONDS} seconds.
+     *
      * @param stateRefreshTimeMillis time to set, in milliseconds
      */
-    public void setStateRefreshTimeMillis(long stateRefreshTimeMillis) {
-        this.stateRefreshTimeMillis = stateRefreshTimeMillis;
-    }
+    void setStateRefreshTimeMillis(long stateRefreshTimeMillis);
 
     /**
      * Set the transaction timeout time in milliseconds. Databases created by this factory will use this value when
@@ -675,12 +400,7 @@ public class FDBDatabaseFactory {
      *
      * @param transactionTimeoutMillis the amount of time in milliseconds before a transaction should timeout
      */
-    public void setTransactionTimeoutMillis(long transactionTimeoutMillis) {
-        if (transactionTimeoutMillis < DEFAULT_TR_TIMEOUT_MILLIS) {
-            throw new RecordCoreArgumentException("cannot set transaction timeout millis to " + transactionTimeoutMillis);
-        }
-        this.transactionTimeoutMillis = transactionTimeoutMillis;
-    }
+    void setTransactionTimeoutMillis(long transactionTimeoutMillis);
 
     /**
      * Get the transaction timeout time in milliseconds. See {@link #setTransactionTimeoutMillis(long)} for more
@@ -688,76 +408,64 @@ public class FDBDatabaseFactory {
      * {@link #UNLIMITED_TR_TIMEOUT_MILLIS}.
      *
      * @return the transaction timeout time in milliseconds
+     *
      * @see #setTransactionTimeoutMillis(long)
      */
-    public long getTransactionTimeoutMillis() {
-        return transactionTimeoutMillis;
-    }
+    long getTransactionTimeoutMillis();
 
     /**
-     * Get the store state cache factory. Each {@link FDBDatabase} produced by this {@code FDBDatabaseFactory} will be
-     * initialized with an {@link com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache FDBRecordStoreStateCache}
-     * from this cache factory. By default, the factory is a {@link PassThroughRecordStoreStateCacheFactory} which means
+     * Get the store state cache factory. Each {@link FDBDatabase} produced by this {@code FDBDatabaseFactory} will
+     * be
+     * initialized with an {@link com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache
+     * FDBRecordStoreStateCache}
+     * from this cache factory. By default, the factory is a {@link PassThroughRecordStoreStateCacheFactory} which
+     * means
      * that the record store state information is never cached.
      *
-     * @return the factory of {@link com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache FDBRecordStoreStateCache}s
-     *      used when initializing {@link FDBDatabase}s
+     * @return the factory of {@link com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache
+     * FDBRecordStoreStateCache}s
+     * used when initializing {@link FDBDatabase}s
      */
     @API(API.Status.EXPERIMENTAL)
     @Nonnull
-    public FDBRecordStoreStateCacheFactory getStoreStateCacheFactory() {
-        return storeStateCacheFactory;
-    }
+    FDBRecordStoreStateCacheFactory getStoreStateCacheFactory();
 
     /**
-     * Set the store state cache factory. Each {@link FDBDatabase} produced by this {@code FDBDatabaseFactory} will be
-     * initialized with an {@link com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache FDBRecordStoreStateCache}
+     * Set the store state cache factory. Each {@link FDBDatabase} produced by this {@code FDBDatabaseFactory} will
+     * be
+     * initialized with an {@link com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache
+     * FDBRecordStoreStateCache}
      * from the cache factory provided.
      *
-     * @param storeStateCacheFactory a factory of {@link com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache FDBRecordStoreStateCache}s
-     *      to use when initializing {@link FDBDatabase}s
+     * @param storeStateCacheFactory a factory of {@link com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache
+     * FDBRecordStoreStateCache}s
+     * to use when initializing {@link FDBDatabase}s
+     *
      * @see com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache
      */
     @API(API.Status.EXPERIMENTAL)
-    public void setStoreStateCacheFactory(@Nonnull FDBRecordStoreStateCacheFactory storeStateCacheFactory) {
-        this.storeStateCacheFactory = storeStateCacheFactory;
-    }
+    void setStoreStateCacheFactory(@Nonnull FDBRecordStoreStateCacheFactory storeStateCacheFactory);
 
     @Nonnull
-    public synchronized FDBDatabase getDatabase(@Nullable String clusterFile) {
-        FDBDatabase database = databases.get(clusterFile);
-        if (database == null) {
-            database = new FDBDatabase(this, clusterFile);
-            database.setDirectoryCacheSize(getDirectoryCacheSize());
-            database.setTrackLastSeenVersion(getTrackLastSeenVersion());
-            database.setResolverStateRefreshTimeMillis(getStateRefreshTimeMillis());
-            database.setDatacenterId(getDatacenterId());
-            database.setStoreStateCache(storeStateCacheFactory.getCache(database));
-            databases.put(clusterFile, database);
-        }
-        return database;
-    }
+    FDBDatabase getDatabase(@Nullable String clusterFile);
 
     @Nonnull
-    public synchronized FDBDatabase getDatabase() {
-        return getDatabase(null);
-    }
+    FDBDatabase getDatabase();
 
     /**
      * Get the locality provider that is used to discover the server location of the keys.
+     *
      * @return the installed locality provider
      */
     @Nonnull
-    public FDBLocalityProvider getLocalityProvider() {
-        return localityProvider;
-    }
+    FDBLocalityProvider getLocalityProvider();
 
     /**
      * Set the locality provider that is used to discover the server location of the keys.
+     *
      * @param localityProvider the locality provider
+     *
      * @see FDBLocalityUtil
      */
-    public void setLocalityProvider(@Nonnull FDBLocalityProvider localityProvider) {
-        this.localityProvider = localityProvider;
-    }
+    void setLocalityProvider(@Nonnull FDBLocalityProvider localityProvider);
 }

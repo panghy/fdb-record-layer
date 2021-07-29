@@ -156,7 +156,7 @@ public class FDBRecordStorePerformanceTest extends FDBTestBase {
     }
 
     public void createMetaData() {
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setDirectoryCacheSize(databaseParameters.pathCache);
         fdb = factory.getDatabase();
 
@@ -440,7 +440,7 @@ public class FDBRecordStorePerformanceTest extends FDBTestBase {
         final FDBRecordStorePerformanceTest tester = new FDBRecordStorePerformanceTest();
         tester.databaseParameters = databaseParameters;
         if (databaseParameters.trace) {
-            FDBDatabaseFactory.instance().setTrace(".", "record-perf");
+            FDBDatabaseFactoryImpl.instance().setTrace(".", "record-perf");
         }
         tester.createMetaData();
         if (args.populate) {

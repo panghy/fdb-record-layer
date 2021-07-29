@@ -131,7 +131,7 @@ public abstract class FDBRecordStoreTestBase extends FDBTestBase {
     }
 
     public void getFDB() {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
     }
 
     @Nonnull

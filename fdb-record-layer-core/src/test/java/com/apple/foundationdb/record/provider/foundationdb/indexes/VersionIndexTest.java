@@ -49,7 +49,7 @@ import com.apple.foundationdb.record.metadata.expressions.GroupingKeyExpression;
 import com.apple.foundationdb.record.metadata.expressions.KeyExpression;
 import com.apple.foundationdb.record.metadata.expressions.VersionKeyExpression;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBQueriedRecord;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecord;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
@@ -142,7 +142,7 @@ public class VersionIndexTest extends FDBTestBase {
     @BeforeEach
     public void setUp() {
         if (fdb == null) {
-            fdb = FDBDatabaseFactory.instance().getDatabase();
+            fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         }
         if (subspace == null) {
             subspace = fdb.run(context -> TestKeySpace.getKeyspacePath("record-test", "unit", "indexTest", "version").toSubspace(context));

@@ -48,7 +48,7 @@ import com.apple.foundationdb.record.metadata.Key;
 import com.apple.foundationdb.record.metadata.expressions.EmptyKeyExpression;
 import com.apple.foundationdb.record.metadata.expressions.GroupingKeyExpression;
 import com.apple.foundationdb.record.metadata.expressions.KeyExpression;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBIndexedRecord;
 import com.apple.foundationdb.record.provider.foundationdb.FDBQueriedRecord;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
@@ -561,7 +561,7 @@ public class RankIndexTest extends FDBRecordStoreTestBase {
 
     @Test
     public void containsNullScore() throws Exception {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = openContext()) {
             openRecordStore(context);
             recordStore.deleteAllRecords(); // Undo loadRecords().
@@ -623,7 +623,7 @@ public class RankIndexTest extends FDBRecordStoreTestBase {
     @Test
     public void writeOnlyRankQuery() throws Exception {
         assertThrows(RecordCoreException.class, () -> {
-            fdb = FDBDatabaseFactory.instance().getDatabase();
+            fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
             try (FDBRecordContext context = openContext()) {
                 openRecordStore(context);
                 recordStore.markIndexWriteOnly("rank_by_gender").join();
@@ -648,7 +648,7 @@ public class RankIndexTest extends FDBRecordStoreTestBase {
     @Test
     public void writeOnlyLookup() throws Exception {
         assertThrows(RecordCoreException.class, () -> {
-            fdb = FDBDatabaseFactory.instance().getDatabase();
+            fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
             try (FDBRecordContext context = openContext()) {
                 openRecordStore(context);
                 recordStore.markIndexWriteOnly("rank_by_gender").join();
@@ -669,7 +669,7 @@ public class RankIndexTest extends FDBRecordStoreTestBase {
 
     @Test
     public void nestedRankQuery() throws Exception {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = openContext()) {
             openRecordStore(context);
             recordStore.deleteAllRecords(); // Undo loadRecords().
@@ -750,7 +750,7 @@ public class RankIndexTest extends FDBRecordStoreTestBase {
 
     @Test
     public void repeatedRankQuery() throws Exception {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = openContext()) {
             openRecordStore(context);
             recordStore.deleteAllRecords(); // Undo loadRecords().
@@ -897,7 +897,7 @@ public class RankIndexTest extends FDBRecordStoreTestBase {
     }
 
     public void repeatedRank(List<TestRecordsRankProto.RepeatedRankedRecord> records) throws Exception {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = openContext()) {
             openRecordStore(context);
             recordStore.deleteAllRecords(); // Undo loadRecords().
@@ -1484,7 +1484,7 @@ public class RankIndexTest extends FDBRecordStoreTestBase {
     @Test
     @Tag(Tags.Slow)
     public void testForRankUpdateTimingError() throws Exception {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
 
         // The NPE happens every so often, so I'm doing it 20 times as that seems to be "enough".
         for (int i = 0; i < 20; i++) {

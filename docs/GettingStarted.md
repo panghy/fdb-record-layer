@@ -187,7 +187,7 @@ It will be useful to define a couple of helper methods as well. In those cases, 
 Start by opening a connection to the FDB database (go ahead and start the FDB server if you haven't already):
 
 ```java
-FDBDatabase db = FDBDatabaseFactory.instance().getDatabase();
+FDBDatabase db = FDBDatabaseFactoryImpl.instance().getDatabase();
 ```
 
 The no-argument version of `getDatabase` will use the default cluster file to connect to FDB.

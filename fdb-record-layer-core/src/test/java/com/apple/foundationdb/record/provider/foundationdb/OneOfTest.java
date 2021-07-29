@@ -48,7 +48,7 @@ public class OneOfTest extends FDBTestBase {
 
     @BeforeEach
     public void setup() {
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = fdb.openContext()) {
             FDBRecordStore.deleteStore(context, TestKeySpace.getKeyspacePath(PATH));
             context.commit();

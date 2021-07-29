@@ -25,7 +25,7 @@ import com.apple.foundationdb.Range;
 import com.apple.foundationdb.Transaction;
 import com.apple.foundationdb.async.AsyncUtil;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBTestBase;
 import com.apple.foundationdb.record.provider.foundationdb.keyspace.KeySpace;
@@ -69,7 +69,7 @@ class HighContentionAllocatorTest extends FDBTestBase {
 
     @BeforeEach
     void setup() {
-        database = FDBDatabaseFactory.instance().getDatabase();
+        database = FDBDatabaseFactoryImpl.instance().getDatabase();
         keySpace = new KeySpace(new KeySpaceDirectory("test-path", KeyType.STRING, "test-path"));
         try (FDBRecordContext context = database.openContext()) {
             keySpace.path("test-path").deleteAllData(context);

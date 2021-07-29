@@ -24,6 +24,7 @@ import com.apple.foundationdb.Range;
 import com.apple.foundationdb.record.ExecuteProperties;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBStoreTimer;
 import com.apple.foundationdb.record.provider.foundationdb.layers.interning.ScopedInterningLayer;
@@ -62,7 +63,7 @@ public class TestingResolverFactory implements BeforeEachCallback, AfterEachCall
         resolvers.clear();
         knownBadEntries.clear();
 
-        FDBDatabaseFactory factory = FDBDatabaseFactory.instance();
+        FDBDatabaseFactory factory = FDBDatabaseFactoryImpl.instance();
         factory.setDirectoryCacheSize(100);
         database = factory.getDatabase();
         // clear all state in the db

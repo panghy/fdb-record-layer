@@ -41,7 +41,7 @@ import com.apple.foundationdb.record.metadata.Key;
 import com.apple.foundationdb.record.metadata.expressions.GroupingKeyExpression;
 import com.apple.foundationdb.record.metadata.expressions.KeyExpression;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBIndexedRecord;
 import com.apple.foundationdb.record.provider.foundationdb.FDBQueriedRecord;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecord;
@@ -103,24 +103,24 @@ public class LeaderboardIndexTest extends FDBTestBase {
 
     @BeforeAll
     public static void initializeRetryPolicy() {
-        oldMaxAttempts = FDBDatabaseFactory.instance().getMaxAttempts();
-        FDBDatabaseFactory.instance().setMaxAttempts(TEST_MAX_ATTEMPTS);
-        oldMaxDelay = FDBDatabaseFactory.instance().getMaxDelayMillis();
-        FDBDatabaseFactory.instance().setMaxDelayMillis(TEST_MAX_DELAY);
+        oldMaxAttempts = FDBDatabaseFactoryImpl.instance().getMaxAttempts();
+        FDBDatabaseFactoryImpl.instance().setMaxAttempts(TEST_MAX_ATTEMPTS);
+        oldMaxDelay = FDBDatabaseFactoryImpl.instance().getMaxDelayMillis();
+        FDBDatabaseFactoryImpl.instance().setMaxDelayMillis(TEST_MAX_DELAY);
     }
 
     @AfterAll
     public static void resetRetryPolicy() {
-        FDBDatabaseFactory.instance().setMaxAttempts(oldMaxAttempts);
-        FDBDatabaseFactory.instance().setMaxDelayMillis(oldMaxDelay);
+        FDBDatabaseFactoryImpl.instance().setMaxAttempts(oldMaxAttempts);
+        FDBDatabaseFactoryImpl.instance().setMaxDelayMillis(oldMaxDelay);
     }
 
     @BeforeEach
     public void getFDB() {
         if (TRACE) {
-            FDBDatabaseFactory.instance().setTrace("/tmp", "LeaderboardIndexTest");
+            FDBDatabaseFactoryImpl.instance().setTrace("/tmp", "LeaderboardIndexTest");
         }
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         metrics = new FDBStoreTimer();
     }
 

@@ -26,7 +26,7 @@ import com.apple.foundationdb.record.RecordCursor;
 import com.apple.foundationdb.record.RecordCursorIterator;
 import com.apple.foundationdb.record.ScanProperties;
 import com.apple.foundationdb.record.provider.foundationdb.FDBDatabase;
-import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactory;
+import com.apple.foundationdb.record.provider.foundationdb.FDBDatabaseFactoryImpl;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.FDBTestBase;
 import com.apple.foundationdb.tuple.Tuple;
@@ -89,7 +89,7 @@ public class ChainedCursorTest extends FDBTestBase {
     private void limitBy(int returnedRowLimit, int recordScanLimit, RecordCursor.NoNextReason noNextReason) {
         // Note that this test only requires a database and a context because the ChainedCursor API requires
         // a context to be passed in when you are applying scan limits.
-        FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             ScanProperties props = new ScanProperties(ExecuteProperties.newBuilder()
                     .setReturnedRowLimit(returnedRowLimit)
@@ -119,7 +119,7 @@ public class ChainedCursorTest extends FDBTestBase {
 
     @Test
     public void testObeysTimeLimit() {
-        FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+        FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
         try (FDBRecordContext context = database.openContext()) {
             ScanProperties props = new ScanProperties(ExecuteProperties.newBuilder()
                     .setTimeLimit(4L)
@@ -152,7 +152,7 @@ public class ChainedCursorTest extends FDBTestBase {
     public void testHatesReverse() {
         // The chained cursor cannot implement a reverse scan
         assertThrows(RecordCoreArgumentException.class, () -> {
-            FDBDatabase database = FDBDatabaseFactory.instance().getDatabase();
+            FDBDatabase database = FDBDatabaseFactoryImpl.instance().getDatabase();
             try (FDBRecordContext context = database.openContext()) {
                 ScanProperties props = new ScanProperties(ExecuteProperties.newBuilder().build(), true);
                 new ChainedCursor<>(context,

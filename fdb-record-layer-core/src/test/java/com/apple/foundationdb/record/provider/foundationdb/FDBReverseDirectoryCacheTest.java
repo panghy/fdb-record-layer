@@ -89,11 +89,11 @@ public class FDBReverseDirectoryCacheTest extends FDBTestBase {
 
     @BeforeEach
     public void getFDB() {
-        FDBDatabaseFactory.instance().setDirectoryCacheSize(100);
+        FDBDatabaseFactoryImpl.instance().setDirectoryCacheSize(100);
         long seed = System.currentTimeMillis();
         System.out.println("Seed " + seed);
         random = new Random(seed);
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         globalScope = ScopedDirectoryLayer.global(fdb);
         fdb.clearReverseDirectoryCache();
     }
@@ -386,7 +386,7 @@ public class FDBReverseDirectoryCacheTest extends FDBTestBase {
         // this is to simulate multiple VMs
         final int parallelism = 20;
         testParallelReverseDirectoryCache(parallelism, true,
-                () -> new FDBDatabase(FDBDatabaseFactory.instance(), null));
+                () -> new FDBDatabaseImpl(FDBDatabaseFactoryImpl.instance(), null));
     }
 
     @Test
@@ -403,7 +403,7 @@ public class FDBReverseDirectoryCacheTest extends FDBTestBase {
         // this is to simulate multiple VMs
         final int parallelism = 20;
         testParallelReverseDirectoryCache(parallelism, false,
-                () -> new FDBDatabase(FDBDatabaseFactory.instance(), null));
+                () -> new FDBDatabaseImpl(FDBDatabaseFactoryImpl.instance(), null));
     }
 
     private void testParallelReverseDirectoryCache(int parallelism, boolean preInitReverseDirectoryCache,
@@ -447,10 +447,10 @@ public class FDBReverseDirectoryCacheTest extends FDBTestBase {
         }
 
         // Force the creation of a new FDB instance
-        FDBDatabaseFactory.instance().clear();
+        FDBDatabaseFactoryImpl.instance().clear();
 
         // Get a fresh new one
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
 
         final Executor executor = new ForkJoinPool(parallelism + 1);
         final Semaphore lock = new Semaphore(parallelism);
@@ -574,10 +574,10 @@ public class FDBReverseDirectoryCacheTest extends FDBTestBase {
         }
 
         // Force the creation of a new FDB instance
-        FDBDatabaseFactory.instance().clear();
+        FDBDatabaseFactoryImpl.instance().clear();
 
         // Get a fresh new one
-        fdb = FDBDatabaseFactory.instance().getDatabase();
+        fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
         cache = fdb.getReverseDirectoryCache();
 
         // In the hopes to ensure that re-creating the entries that we previously created

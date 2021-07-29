@@ -78,7 +78,7 @@ import java.util.stream.Collectors;
  * </p>
  *
  * <pre><code>
- * final FDBDatabase fdb = FDBDatabaseFactory.instance().getDatabase();
+ * final FDBDatabase fdb = FDBDatabaseFactoryImpl.instance().getDatabase();
  * try (FDBRecordContext ctx = fdb.openContext()) {
  *     ...
  * }
