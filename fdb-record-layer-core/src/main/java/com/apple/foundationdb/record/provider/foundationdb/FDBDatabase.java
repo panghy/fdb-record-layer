@@ -765,7 +765,7 @@ public interface FDBDatabase {
      * @see FDBExceptions#wrapException(Throwable)
      */
     @FunctionalInterface
-    public interface ExceptionMapper {
+    interface ExceptionMapper {
         RuntimeException apply(@Nonnull Throwable ex, @Nullable StoreTimer.Event event);
     }
 
