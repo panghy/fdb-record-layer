@@ -18,97 +18,61 @@
  * limitations under the License.
  */
 
-apply plugin: 'com.jfrog.artifactory'
-
-// Add various details to the pom file to allow for publishing
-def addPublishingInfo(publication) {
-    publication.pom {
-        name = project.name
-        url = 'https://foundationdb.github.io/fdb-record-layer/'
-
-        licenses {
-            license {
-                name = 'The Apache License, Version 2.0'
-                url = 'https://www.apache.org/licenses/LICENSE-2.0'
-            }
-        }
-
-        developers {
-            developer {
-                name = 'FoundationDB'
-            }
-        }
-
-        scm {
-            url = 'https://github.com/FoundationDB/fdb-record-layer/'
-            connection = 'scm:git:git@github.com:FoundationDB/fdb-record-layer.git'
-            developerConnection = 'scm:git:git@github.com:FoundationDB/fdb-record-layer.git'
-        }
-    }
-}
-
-ext {
-    // Make the "addPublishingInfo" method visible from outside this plugin
-    addPublishingInfo = this.&addPublishingInfo
-}
+apply plugin: 'maven-publish'
+apply plugin: 'signing'
 
 publishing {
     publications {
-        library(MavenPublication) { publication ->
+        mavenJava(MavenPublication) {
             from components.java
-            artifact tasks.sourcesJar
-            artifact tasks.javadocJar
-            addPublishingInfo(publication)
-        }
-    }
+            pom {
+                name = project.name
+                url = 'https://foundationdb.github.io/fdb-record-layer/'
 
-    artifactoryPublish {
-        // As a safeguard, only actually publish to artifactory if -PpublishBuild=true is passed to gradle
-        // Note: skip is documented, but onlyIf seems to also be required to make this work for some reason
-        // See: https://gist.github.com/DALDEI/40925568cef57e16e8a7
-        def publishBuild = Boolean.parseBoolean(findProperty('publishBuild') ?: 'false')
-        skip = !publishBuild
-        onlyIf {
-            publishBuild
-        }
-        publications(publishing.publications.library)
-    }
-}
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0'
+                    }
+                }
 
-if (System.getenv('ARTIFACTORY_USER') != null && System.getenv('ARTIFACTORY_KEY') != null) {
-    artifactory {
-        clientConfig.setIncludeEnvVars(true)
-        publish {
-            def artifactoryUrl = System.getenv('ARTIFACTORY_URL') ?: 'https://ossartifacts.jfrog.io/artifactory/'
-            contextUrl = artifactoryUrl
-            repository {
-                repoKey = System.getenv('ARTIFACTORY_REPO') ?: 'fdb-record-layer'
-                username = System.getenv('ARTIFACTORY_USER')
-                password = System.getenv('ARTIFACTORY_KEY')
-            }
-            defaults {
-                publications('mavenJava')
-                publishPom = publishBuild
-                publishArtifacts = publishBuild
-                publishBuildInfo = publishBuild
-                publishIvy = false
+                developers {
+                    developer {
+                        name = 'FoundationDB'
+                    }
+                }
+
+                scm {
+                    url = 'https://github.com/FoundationDB/fdb-record-layer/'
+                    connection = 'scm:git:git@github.com:FoundationDB/fdb-record-layer.git'
+                    developerConnection = 'scm:git:git@github.com:FoundationDB/fdb-record-layer.git'
+                }
             }
         }
     }
-}
-
-createDistribution.configure {
-    afterEvaluate {
-        dependsOn generatePomFileForLibraryPublication
-        from tasks.jar, tasks.sourcesJar, tasks.javadocJar, tasks.generatePomFileForLibraryPublication
-        rename { filename ->
-            GenerateMavenPom pomTask = tasks.generatePomFileForLibraryPublication
-            Jar jarTask = tasks.jar
-            if (filename == pomTask.destination.name) {
-                jarTask.archiveName.replace "jar", "pom"
+    repositories {
+        maven {
+            name = "OSSRH"
+            if(project.version.endsWith('-SNAPSHOT')) {
+                url "https://s01.oss.sonatype.org/content/repositories/snapshots/"
             } else {
-                filename
+                url "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+            }
+            credentials {
+                username = System.getenv("MAVEN_USERNAME")
+                password = System.getenv("MAVEN_PASSWORD")
             }
         }
     }
+}
+
+javadoc {
+    if(JavaVersion.current().isJava9Compatible()) {
+        options.addBooleanOption('html5', true)
+    }
+}
+
+signing {
+    useGpgCmd()
+    sign publishing.publications.mavenJava
 }
