@@ -151,6 +151,9 @@ public enum LogMessageKeys {
     SOURCE_FILE("source_file"),
     CONTINUED_BUILD("continued_build"),
     INDEXING_METHOD("indexing_method"),
+    ALLOW_REPAIR("allow_repair"),
+    INDEXING_POLICY("indexing_policy"),
+    INDEXING_POLICY_DESIRED_ACTION("indexing_policy_desired_action"),
 
     // comparisons
     COMPARISON_VALUE("comparison_value"),
