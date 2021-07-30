@@ -38,7 +38,7 @@ import java.util.function.Supplier;
  * A singleton maintaining a list of {@link FDBDatabaseImpl} instances, indexed by their cluster file location.
  */
 @API(API.Status.STABLE)
-public class FDBDatabaseFactoryImpl extends AbstractFDBDatabaseFactory {
+public class FDBDatabaseFactoryImpl extends FDBDatabaseFactoryBase {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FDBDatabaseFactoryImpl.class);
     private static final int API_VERSION = 630;

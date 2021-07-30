@@ -39,7 +39,7 @@ import java.util.function.Supplier;
 /**
  * Abstract class for {@code FDBDatabaseFactory} with most boiler-plate code extracted.
  */
-public abstract class AbstractFDBDatabaseFactory implements FDBDatabaseFactory {
+public abstract class FDBDatabaseFactoryBase implements FDBDatabaseFactory {
 
     protected static final Function<FDBLatencySource, Long> DEFAULT_LATENCY_INJECTOR = api -> 0L;
 
