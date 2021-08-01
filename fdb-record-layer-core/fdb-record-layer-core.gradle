@@ -38,6 +38,10 @@ dependencies {
     compile "org.slf4j:slf4j-api:${slf4jVersion}"
     compile "org.apache.commons:commons-lang3:${commonsLang3Version}"
     compile "com.google.guava:guava:${guavaVersion}"
+
+    compile 'io.grpc:grpc-stub:1.39.0'
+    compile project(':lionrock-foundationdb-client')
+
     compileOnly "com.google.code.findbugs:jsr305:${jsr305Version}"
     compileOnly "com.google.auto.service:auto-service:${autoServiceVersion}"
     annotationProcessor "com.google.auto.service:auto-service:${autoServiceVersion}"
