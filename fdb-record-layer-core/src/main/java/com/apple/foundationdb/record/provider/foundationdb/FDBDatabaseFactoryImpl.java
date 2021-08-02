@@ -21,12 +21,11 @@
 package com.apple.foundationdb.record.provider.foundationdb;
 
 import com.apple.foundationdb.Database;
-import com.apple.foundationdb.FDB;
-import com.apple.foundationdb.NetworkOptions;
 import com.apple.foundationdb.annotation.API;
-import com.apple.foundationdb.annotation.SpotBugsSuppressWarnings;
-import com.apple.foundationdb.record.RecordCoreException;
-import com.apple.foundationdb.record.logging.KeyValueLogMessage;
+import io.github.panghy.lionrock.client.foundationdb.RemoteFoundationDBDatabaseFactory;
+import io.github.panghy.lionrock.foundationdb.record.RemoteFDBLocalityProvider;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,33 +40,14 @@ import java.util.function.Supplier;
 public class FDBDatabaseFactoryImpl extends FDBDatabaseFactoryBase {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FDBDatabaseFactoryImpl.class);
-    private static final int API_VERSION = 630;
-
     @Nonnull
-    private static final FDBDatabaseFactoryImpl INSTANCE = new FDBDatabaseFactoryImpl();
-    // when set to true, static options have been set on the FDB instance.
-    //made volatile because multiple FDBDatabaseFactory instances can be created technically, and thus can be racy during init
-    private static volatile boolean staticOptionsSet = false;
+    private static final FDBDatabaseFactoryImpl INSTANCE = new FDBDatabaseFactoryImpl(
+            ManagedChannelBuilder.forAddress("localhost", 6565)
+                    .maxInboundMessageSize(32_000_000)
+                    .usePlaintext().build(), "fdb-record-layer");
 
-    @Nonnull
-    private FDBLocalityProvider localityProvider = FDBLocalityUtil.instance();
-
-    @Nullable
-    private FDB fdb;
-    private boolean inited;
-
-    @Nullable
-    private String traceDirectory = null;
-    @Nullable
-    private String traceLogGroup = null;
-    @Nonnull
-    private FDBTraceFormat traceFormat = FDBTraceFormat.DEFAULT;
-
-    private boolean runLoopProfilingEnabled = false;
-
-    //made volatile because multiple FDBDatabaseFactory instances can be created technically, and thus can be racy during init
-    private static volatile int threadsPerClientVersion = 1; //default is 1, which is basically disabled
-
+    private final ManagedChannel channel;
+    private final String clientIdentifier;
     /**
      * The default is a log-based predicate, which can also be used to enable tracing on a more granular level
      * (such as by request) using {@link #setTransactionIsTracedSupplier(Supplier)}.
@@ -76,121 +56,44 @@ public class FDBDatabaseFactoryImpl extends FDBDatabaseFactoryBase {
     private Supplier<Boolean> transactionIsTracedSupplier = LOGGER::isTraceEnabled;
 
     @Nonnull
+    private FDBLocalityProvider localityProvider = RemoteFDBLocalityProvider.instance();
+
     public static FDBDatabaseFactoryImpl instance() {
         return FDBDatabaseFactoryImpl.INSTANCE;
     }
 
-    protected synchronized FDB initFDB() {
-        if (!inited) {
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug(KeyValueLogMessage.of("Starting FDB"));
-            }
-            fdb = FDB.selectAPIVersion(API_VERSION);
-            fdb.setUnclosedWarning(unclosedWarning);
-            setStaticOptions(fdb);
-            NetworkOptions options = fdb.options();
-            if (!traceFormat.isDefaultValue()) {
-                options.setTraceFormat(traceFormat.getOptionValue());
-            }
-            if (traceDirectory != null) {
-                options.setTraceEnable(traceDirectory);
-            }
-            if (traceLogGroup != null) {
-                options.setTraceLogGroup(traceLogGroup);
-            }
-            if (runLoopProfilingEnabled) {
-                options.setEnableRunLoopProfiling();
-            }
-            if (networkExecutor == null) {
-                fdb.startNetwork();
-            } else {
-                fdb.startNetwork(networkExecutor);
-            }
-            inited = true;
-        }
-        return fdb;
-    }
-
     /**
-     * Set the number of threads per FDB client version. The default value is 1.
+     * Create a new {@link FDBDatabaseFactoryImpl}.
      *
-     * @param threadsPerClientV the number of threads per client version. Cannot be less than 1
+     * @param channel The gRPC {@link ManagedChannel} to talk to the backend.
+     * @param clientIdentifier The client identifier when communicating with the server.
      */
-    static void setThreadsPerClientVersion(int threadsPerClientV) {
-        if (FDBDatabaseFactoryImpl.staticOptionsSet) {
-            throw new RecordCoreException("threads per client version cannot be changed as the version has already been initiated");
-        }
-        if (threadsPerClientV < 1) {
-            //if the thread count is too low, disable the setting
-            threadsPerClientV = 1;
-        }
-        FDBDatabaseFactoryImpl.threadsPerClientVersion = threadsPerClientV;
-    }
-
-    static int getThreadsPerClientVersion() {
-        return FDBDatabaseFactoryImpl.threadsPerClientVersion;
-    }
-
-    private static synchronized void setStaticOptions(final FDB fdb) {
-        /*
-         * There are a few FDB settings that have to be set statically, but also need to have room
-         * for configuration. For the most part, FDBDatabaseFactory is a singleton and so in _theory_ this shouldn't
-         * matter. However, in practice it is possible to create multiple factories(i.e. in test code and such),
-         * and doing so may cause problems with these settings (errors thrown, that kind of thing). To avoid that,
-         * we have to follow a somewhat goofy pattern of making those settings static, and checking to ensure that
-         * we only set those options once. This block of code does that.
-         *
-         * Note that this method is synchronized on the class; this is so that multiple concurrent attempts to
-         * init an FDBDatabaseFactory won't cause this function to fail halfway through.
-         */
-        if (!staticOptionsSet) {
-            fdb.options().setClientThreadsPerVersion(threadsPerClientVersion);
-
-            staticOptionsSet = true;
-        }
+    public FDBDatabaseFactoryImpl(ManagedChannel channel, String clientIdentifier) {
+        this.channel = channel;
+        this.clientIdentifier = clientIdentifier;
     }
 
     @Override
-    public synchronized void shutdown() {
-        if (inited) {
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug(KeyValueLogMessage.of("Shutting down FDB"));
-            }
-            for (FDBDatabase database : databases.values()) {
-                database.close();
-            }
-            // TODO: Does this do the right thing yet?
-            fdb.stopNetwork();
-            inited = false;
-        }
+    public void shutdown() {
+        channel.shutdown();
     }
 
     @Override
-    @SpotBugsSuppressWarnings("IS2_INCONSISTENT_SYNC")
-    public void setTrace(@Nullable String traceDirectory, @Nullable String traceLogGroup) {
-        this.traceDirectory = traceDirectory;
-        this.traceLogGroup = traceLogGroup;
+    public void setTrace(@Nullable String s, @Nullable String s1) {
     }
 
     @Override
-    public void setTraceFormat(@Nonnull FDBTraceFormat traceFormat) {
-        this.traceFormat = traceFormat;
+    public void setTraceFormat(@Nonnull FDBTraceFormat fdbTraceFormat) {
     }
 
     @Override
-    public synchronized void setRunLoopProfilingEnabled(boolean runLoopProfilingEnabled) {
-        if (inited) {
-            throw new RecordCoreException("run loop profiling can not be enabled as the client has already started");
-        }
-        this.runLoopProfilingEnabled = runLoopProfilingEnabled;
+    public void setRunLoopProfilingEnabled(boolean b) {
     }
 
     @Override
     public boolean isRunLoopProfilingEnabled() {
-        return runLoopProfilingEnabled;
+        return false;
     }
-
-    // TODO: Demote these to UNSTABLE and deprecate at some point.
 
     @Override
     public void setTransactionIsTracedSupplier(Supplier<Boolean> transactionIsTracedSupplier) {
@@ -237,8 +140,10 @@ public class FDBDatabaseFactoryImpl extends FDBDatabaseFactoryBase {
 
     @Nonnull
     @Override
-    public Database open(final String clusterFile) {
-        FDB fdb = initFDB();
-        return fdb.open(clusterFile);
+    public Database open(String databaseName) {
+        if (databaseName == null) {
+            databaseName = "fdb";
+        }
+        return RemoteFoundationDBDatabaseFactory.open(databaseName, clientIdentifier, channel);
     }
 }

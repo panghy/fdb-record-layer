@@ -20,6 +20,7 @@
 
 package com.apple.foundationdb.record.provider.foundationdb;
 
+import com.apple.foundationdb.FDB;
 import org.junit.jupiter.api.BeforeAll;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +43,7 @@ public abstract class FDBTestBase {
     public static void initFDB() {
         FDBDatabaseFactoryImpl factory = FDBDatabaseFactoryImpl.instance();
         factory.setUnclosedWarning(true);
-        factory.initFDB();
+        FDB.selectAPIVersion(630);
     }
 
     @BeforeAll

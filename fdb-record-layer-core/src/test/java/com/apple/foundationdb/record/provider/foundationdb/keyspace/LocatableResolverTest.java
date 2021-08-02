@@ -43,6 +43,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheStats;
 import com.google.common.collect.ImmutableList;
+import io.grpc.ManagedChannelBuilder;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -856,7 +857,9 @@ public abstract class LocatableResolverTest extends FDBTestBase {
         // version is cached for 30 seconds by default
         database.setResolverStateRefreshTimeMillis(100);
         // sets the timeout for all the db instances we create
-        final FDBDatabaseFactoryImpl parallelFactory = new FDBDatabaseFactoryImpl();
+        final FDBDatabaseFactoryImpl parallelFactory = new FDBDatabaseFactoryImpl(
+                ManagedChannelBuilder.forAddress("localhost", 6565).usePlaintext().build(),
+                "testParallelDbAndScopeGetVersion");
         parallelFactory.setStateRefreshTimeMillis(100);
         Supplier<FDBDatabase> databaseSupplier = () -> new FDBDatabaseImpl(parallelFactory, null);
         consistently("uninitialized version is 0", () -> {
