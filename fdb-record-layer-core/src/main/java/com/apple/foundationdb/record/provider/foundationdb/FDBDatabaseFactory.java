@@ -45,14 +45,6 @@ import java.util.function.Supplier;
 public abstract class FDBDatabaseFactory {
 
     /**
-     * Default implementation of {@link FDBDatabaseFactory}. For backwards compatibility reasons, the abstract class
-     * used to be the concrete implementation and hence {@link #instance()} exists on the abstract class so that
-     * existing call sites would continue to work.
-     */
-    @Nonnull
-    private static final FDBDatabaseFactoryImpl INSTANCE = new FDBDatabaseFactoryImpl();
-
-    /**
      * The default number of entries that is to be cached, per database, from
      * {@link com.apple.foundationdb.record.provider.foundationdb.keyspace.LocatableResolver} retrieval requests.
      */
@@ -101,9 +93,20 @@ public abstract class FDBDatabaseFactory {
 
     private Function<FDBLatencySource, Long> latencyInjector = DEFAULT_LATENCY_INJECTOR;
 
+    /**
+     * Default implementation of {@link FDBDatabaseFactory}. For backwards compatibility reasons, the abstract class
+     * used to be the concrete implementation and hence this method exists on the abstract class so that
+     * existing call sites would continue to work.
+     *
+     * @return singleton instance of {@link FDBDatabaseFactoryImpl}.
+     *
+     * @deprecated Call {@link FDBDatabaseFactoryImpl#instance()} instead. This method will be removed in the next major
+     * release.
+     */
+    @Deprecated
     @Nonnull
     public static FDBDatabaseFactoryImpl instance() {
-        return FDBDatabaseFactory.INSTANCE;
+        return FDBDatabaseFactoryImpl.instance();
     }
 
     @Nullable
@@ -533,6 +536,30 @@ public abstract class FDBDatabaseFactory {
         return newExecutor;
     }
 
+    /**
+     * Set the number of threads per FDB client version. The default value is 1.
+     *
+     * @param threadsPerClientV the number of threads per client version. Cannot be less than 1.
+     *
+     * @deprecated Call directly on {@link FDBDatabaseFactoryImpl}. This will be removed in a future release.
+     */
+    @Deprecated
+    public static void setThreadsPerClientVersion(int threadsPerClientV) {
+        FDBDatabaseFactoryImpl.setThreadsPerClientVersion(threadsPerClientV);
+    }
+
+    /**
+     * Get the number of threads per FDB client version. The default value is 1.
+     *
+     * @return the number of threads per client version to use.
+     *
+     * @deprecated Call directly on {@link FDBDatabaseFactoryImpl}. This will be removed in a future release.
+     */
+    @Deprecated
+    public static int getThreadsPerClientVersion() {
+        return FDBDatabaseFactoryImpl.getThreadsPerClientVersion();
+    }
+
     @Nonnull
     public Supplier<BlockingInAsyncDetection> getBlockingInAsyncDetectionSupplier() {
         return this.blockingInAsyncDetectionSupplier;
@@ -595,6 +622,8 @@ public abstract class FDBDatabaseFactory {
      * @param runLoopProfilingEnabled whether run-loop profiling should be enabled
      *
      * @see NetworkOptions#setEnableSlowTaskProfiling()
+     * @deprecated Call directly on {@link FDBDatabaseFactoryImpl}. This method will be removed in the abstract class
+     * in the next major release.
      */
     public abstract void setRunLoopProfilingEnabled(boolean runLoopProfilingEnabled);
 
@@ -604,6 +633,8 @@ public abstract class FDBDatabaseFactory {
      * @return whether additional run-loop profiling has been enabled
      *
      * @see #setRunLoopProfilingEnabled(boolean)
+     * @deprecated Call directly on {@link FDBDatabaseFactoryImpl}. This method will be removed in the abstract class
+     * in the next major release.
      */
     public abstract boolean isRunLoopProfilingEnabled();
 
