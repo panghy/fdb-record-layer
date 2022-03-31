@@ -35,6 +35,7 @@ import com.apple.foundationdb.record.provider.foundationdb.FDBRecord;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordStoreBase;
 import com.apple.foundationdb.record.query.plan.temp.CorrelationIdentifier;
 import com.apple.foundationdb.record.query.plan.temp.GraphExpansion;
+import com.apple.foundationdb.record.query.plan.temp.Quantifier;
 import com.apple.test.Tags;
 import com.google.common.collect.ImmutableSet;
 import com.google.protobuf.ByteString;
@@ -53,6 +54,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -99,9 +101,8 @@ public class QueryExpressionTest {
             return 0;
         }
 
-        @Nonnull
         @Override
-        public GraphExpansion expand(@Nonnull final CorrelationIdentifier base, @Nonnull final List<String> fieldNamePrefix) {
+        public @Nonnull GraphExpansion expand(@Nonnull final CorrelationIdentifier baseAlias, @Nonnull final Supplier<Quantifier.ForEach> baseQuantifierSupplier, @Nonnull final List<String> fieldNamePrefix) {
             throw new UnsupportedOperationException();
         }
     }
@@ -110,7 +111,7 @@ public class QueryExpressionTest {
         @Nullable
         @Override
         public <M extends Message> Boolean evalMessage(@Nonnull FDBRecordStoreBase<M> store, @Nonnull EvaluationContext context,
-                                                       @Nullable FDBRecord<M> record, @Nullable Message message) {
+                                                       @Nullable FDBRecord<M> rec, @Nullable Message message) {
             return true;
         }
     };
@@ -118,7 +119,7 @@ public class QueryExpressionTest {
         @Nullable
         @Override
         public <M extends Message> Boolean evalMessage(@Nonnull FDBRecordStoreBase<M> store, @Nonnull EvaluationContext context,
-                                                       @Nullable FDBRecord<M> record, @Nullable Message message) {
+                                                       @Nullable FDBRecord<M> rec, @Nullable Message message) {
             return false;
         }
     };
@@ -126,7 +127,7 @@ public class QueryExpressionTest {
         @Nullable
         @Override
         public <M extends Message> Boolean evalMessage(@Nonnull FDBRecordStoreBase<M> store, @Nonnull EvaluationContext context,
-                                                       @Nullable FDBRecord<M> record, @Nullable Message message) {
+                                                       @Nullable FDBRecord<M> rec, @Nullable Message message) {
             return null;
         }
     };

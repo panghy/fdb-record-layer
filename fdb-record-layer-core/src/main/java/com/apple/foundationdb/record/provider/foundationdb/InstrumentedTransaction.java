@@ -21,6 +21,7 @@
 package com.apple.foundationdb.record.provider.foundationdb;
 
 import com.apple.foundationdb.Database;
+import com.apple.foundationdb.FDBError;
 import com.apple.foundationdb.FDBException;
 import com.apple.foundationdb.MutationType;
 import com.apple.foundationdb.Range;
@@ -45,8 +46,26 @@ public class InstrumentedTransaction extends InstrumentedReadTransaction<Transac
     @Nullable
     protected ReadTransaction snapshot; // lazily cached snapshot wrapper
 
-    public InstrumentedTransaction(@Nullable StoreTimer timer, @Nonnull Transaction underlying, boolean enableAssertions) {
+    protected final FDBDatabase database;
+    @Nullable
+    protected final TransactionListener listener;
+
+    private final long startNanos;
+    private boolean endTimeRecorded = false;
+
+    public InstrumentedTransaction(@Nullable StoreTimer timer,
+                                   @Nonnull FDBDatabase database,
+                                   @Nullable TransactionListener listener,
+                                   @Nonnull Transaction underlying,
+                                   boolean enableAssertions) {
         super(timer, underlying, enableAssertions);
+        this.startNanos = System.nanoTime();
+        this.database = database;
+        this.listener = listener;
+
+        if (listener != null) {
+            listener.create(database, this);
+        }
     }
 
     @Override
@@ -86,6 +105,7 @@ public class InstrumentedTransaction extends InstrumentedReadTransaction<Transac
     public void clear(byte[] keyBegin, byte[] keyEnd) {
         underlying.clear(checkKey(keyBegin), checkKey(keyEnd));
         increment(FDBStoreTimer.Counts.DELETES);
+        increment(FDBStoreTimer.Counts.RANGE_DELETES);
     }
 
     @Override
@@ -95,6 +115,7 @@ public class InstrumentedTransaction extends InstrumentedReadTransaction<Transac
 
         underlying.clear(range);
         increment(FDBStoreTimer.Counts.DELETES);
+        increment(FDBStoreTimer.Counts.RANGE_DELETES);
     }
 
     @Override
@@ -102,6 +123,7 @@ public class InstrumentedTransaction extends InstrumentedReadTransaction<Transac
     public void clearRangeStartsWith(byte[] prefix) {
         underlying.clearRangeStartsWith(checkKey(prefix));
         increment(FDBStoreTimer.Counts.DELETES);
+        increment(FDBStoreTimer.Counts.RANGE_DELETES);
     }
 
     @Override
@@ -114,8 +136,42 @@ public class InstrumentedTransaction extends InstrumentedReadTransaction<Transac
     @Override
     public CompletableFuture<Void> commit() {
         long startTimeNanos = System.nanoTime();
-        return underlying.commit().whenComplete((v, ex) ->
-                recordSinceNanoTime(FDBStoreTimer.Events.COMMITS, startTimeNanos));
+        return underlying.commit().whenComplete((v, ex) -> {
+            trackCommitFailures(ex);
+
+            recordEndTime();
+            if (listener != null) {
+                listener.commit(database, this, timer, ex);
+            }
+
+            recordSinceNanoTime(FDBStoreTimer.Events.COMMITS, startTimeNanos);
+        });
+    }
+
+    private void trackCommitFailures(@Nullable Throwable ex) {
+        if (ex != null) {
+            increment(FDBStoreTimer.Counts.COMMITS_FAILED);
+        }
+
+        while (ex != null && !(ex instanceof FDBException)) {
+            ex = ex.getCause();
+        }
+        if (ex != null) {
+            FDBError error = FDBError.fromCode(((FDBException) ex).getCode());
+            switch (error) {
+                case NOT_COMMITTED:
+                    increment(FDBStoreTimer.Counts.CONFLICTS);
+                    break;
+                case COMMIT_UNKNOWN_RESULT:
+                    increment(FDBStoreTimer.Counts.COMMIT_UNKNOWN);
+                    break;
+                case TRANSACTION_TOO_LARGE:
+                    increment(FDBStoreTimer.Counts.TRANSACTION_TOO_LARGE);
+                    break;
+                default:
+                    break;
+            }
+        }
     }
 
     @Override
@@ -166,6 +222,10 @@ public class InstrumentedTransaction extends InstrumentedReadTransaction<Transac
     @Override
     public void close() {
         underlying.close();
+        recordEndTime();
+        if (listener != null) {
+            listener.close(database, this, timer);
+        }
     }
 
     @Override
@@ -189,6 +249,13 @@ public class InstrumentedTransaction extends InstrumentedReadTransaction<Transac
     @Override
     public void setReadVersion(long l) {
         underlying.setReadVersion(l);
+    }
+
+    private synchronized void recordEndTime() {
+        if (timer != null && !endTimeRecorded) {
+            endTimeRecorded = true;
+            timer.record(FDBStoreTimer.Events.TRANSACTION_TIME, System.nanoTime() - startNanos);
+        }
     }
 
     private static class Snapshot extends InstrumentedReadTransaction<ReadTransaction> implements ReadTransaction {

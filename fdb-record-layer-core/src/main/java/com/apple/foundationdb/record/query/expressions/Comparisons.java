@@ -38,6 +38,9 @@ import com.apple.foundationdb.record.provider.common.text.TextTokenizerRegistryI
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordStoreBase;
 import com.apple.foundationdb.record.provider.foundationdb.cursors.ProbableIntersectionCursor;
 import com.apple.foundationdb.record.query.ParameterRelationshipGraph;
+import com.apple.foundationdb.record.query.plan.temp.AliasMap;
+import com.apple.foundationdb.record.query.plan.temp.Correlated;
+import com.apple.foundationdb.record.query.plan.temp.CorrelationIdentifier;
 import com.apple.foundationdb.record.util.HashUtils;
 import com.apple.foundationdb.tuple.ByteArrayUtil;
 import com.apple.foundationdb.tuple.ByteArrayUtil2;
@@ -552,9 +555,6 @@ public class Comparisons {
         TEXT_CONTAINS_PREFIX,
         TEXT_CONTAINS_ALL_PREFIXES,
         TEXT_CONTAINS_ANY_PREFIX,
-        FULL_TEXT_LUCENE_QUERY,
-        FULL_TEXT_LUCENE_QUERY_HIGHLIGHT,
-        FULL_TEXT_LUCENE_AUTO_COMPLETE,
         @API(API.Status.EXPERIMENTAL)
         SORT(false);
 
@@ -639,7 +639,7 @@ public class Comparisons {
      * A comparison between a value associated with someplace in the record (such as a field) and a value associated
      * with the plan (such as a constant or a bound parameter).
      */
-    public interface Comparison extends PlanHashable, QueryHashable {
+    public interface Comparison extends PlanHashable, QueryHashable, Correlated<Comparison> {
         /**
          * Evaluate this comparison for the value taken from the target record.
          * @param store the record store for the query
@@ -701,6 +701,22 @@ public class Comparisons {
         @Nonnull
         default Comparison withParameterRelationshipMap(@Nonnull ParameterRelationshipGraph parameterRelationshipGraph) {
             return this;
+        }
+
+        @Nonnull
+        @Override
+        default Set<CorrelationIdentifier> getCorrelatedTo() {
+            return ImmutableSet.of();
+        }
+
+        @Override
+        default boolean semanticEquals(@Nullable Object other, @Nonnull AliasMap aliasMap) {
+            return this.equals(other);
+        }
+
+        @Override
+        default int semanticHashCode() {
+            return hashCode();
         }
     }
 
@@ -850,6 +866,12 @@ public class Comparisons {
                     throw new UnsupportedOperationException("Hash Kind " + hashKind.name() + " is not supported");
             }
         }
+
+        @Nonnull
+        @Override
+        public Comparison rebase(@Nonnull final AliasMap translationMap) {
+            return this;
+        }
     }
 
     /**
@@ -923,6 +945,17 @@ public class Comparisons {
             return type;
         }
 
+        public boolean isCorrelation() {
+            return internal == Bindings.Internal.CORRELATION;
+        }
+
+        public boolean isCorrelatedTo(@Nonnull final CorrelationIdentifier alias) {
+            if (!isCorrelation()) {
+                return false;
+            }
+            return Bindings.Internal.CORRELATION.identifier(getParameter()).equals(alias.getId());
+        }
+
         @Nullable
         @Override
         public Object getComparand(@Nullable FDBRecordStoreBase<?> store, @Nullable EvaluationContext context) {
@@ -930,6 +963,59 @@ public class Comparisons {
                 throw new EvaluationContextRequiredException("Cannot get parameter without context");
             }
             return context.getBinding(parameter);
+        }
+
+        @Nonnull
+        @Override
+        public Comparison rebase(@Nonnull final AliasMap translationMap) {
+            if (isCorrelation()) {
+                final var alias = CorrelationIdentifier.of(Bindings.Internal.CORRELATION.identifier(parameter));
+                final var translatedAlias = translationMap.getTargetOrDefault(alias, alias);
+                return new ParameterComparison(type,
+                        Bindings.Internal.CORRELATION.bindingName(translatedAlias.getId()),
+                        Bindings.Internal.CORRELATION,
+                        parameterRelationshipGraph);
+            } else {
+                return this;
+            }
+        }
+
+        @Nonnull
+        @Override
+        public Set<CorrelationIdentifier> getCorrelatedTo() {
+            if (!isCorrelation()) {
+                return ImmutableSet.of();
+            }
+            return ImmutableSet.of(getAlias());
+        }
+
+        @Override
+        public boolean semanticEquals(@Nullable final Object other, @Nonnull final AliasMap aliasMap) {
+            if (this == other) {
+                return true;
+            }
+            if (other == null || getClass() != other.getClass()) {
+                return false;
+            }
+            ParameterComparison that = (ParameterComparison) other;
+            if (type != that.type) {
+                return false;
+            }
+
+            //
+            // Either this parameter is a proper correlation in which case the alias map needs to be consulted,
+            // or, if it is a non-correlation like an extracted literal we need to consult the parameter relationship
+            // graph.
+            //
+            if (isCorrelation() && that.isCorrelation()) {
+                return aliasMap.containsMapping(getAlias(), that.getAlias());
+            }
+
+            if (!getParameter().equals(that.getParameter())) {
+                return false;
+            }
+            
+            return Objects.equals(relatedByEquality(), that.relatedByEquality());
         }
 
         @Nullable
@@ -964,18 +1050,26 @@ public class Comparisons {
             return parameter;
         }
 
+        @Nonnull
+        public CorrelationIdentifier getAlias() {
+            if (!isCorrelation()) {
+                throw new IllegalStateException("caller should check for type of binding before calling this method");
+            }
+            return CorrelationIdentifier.of(Bindings.Internal.CORRELATION.identifier(parameter));
+        }
+
         @Override
+        @SpotBugsSuppressWarnings("EQ_UNUSUAL")
+        @SuppressWarnings("EqualsWhichDoesntCheckParameterClass")
         public boolean equals(Object o) {
-            if (this == o) {
-                return true;
+            final AliasMap aliasMap;
+            if (isCorrelation()) {
+                final var alias = CorrelationIdentifier.of(Bindings.Internal.CORRELATION.identifier(parameter));
+                aliasMap = AliasMap.identitiesFor(ImmutableSet.of(alias));
+            } else {
+                aliasMap = AliasMap.emptyMap();
             }
-            if (o == null || getClass() != o.getClass()) {
-                return false;
-            }
-            ParameterComparison that = (ParameterComparison) o;
-            return type == that.type &&
-                   Objects.equals(parameter, that.parameter) &&
-                   Objects.equals(relatedByEquality(), that.relatedByEquality());
+            return semanticEquals(o, aliasMap);
         }
 
         @Override
@@ -1000,10 +1094,10 @@ public class Comparisons {
         public int planHash(@Nonnull final PlanHashKind hashKind) {
             switch (hashKind) {
                 case LEGACY:
-                    return type.name().hashCode() + ((internal == Bindings.Internal.CORRELATION) ? 0 : parameter.hashCode());
+                    return type.name().hashCode() + (isCorrelation() ? 0 : parameter.hashCode());
                 case FOR_CONTINUATION:
                 case STRUCTURAL_WITHOUT_LITERALS:
-                    if (internal == Bindings.Internal.CORRELATION) {
+                    if (isCorrelation()) {
                         return PlanHashable.objectsPlanHash(hashKind, BASE_HASH, type);
                     } else {
                         return PlanHashable.objectsPlanHash(hashKind, BASE_HASH, type, parameter);
@@ -1126,6 +1220,12 @@ public class Comparisons {
 
         @Nonnull
         @Override
+        public Comparison rebase(@Nonnull final AliasMap translationMap) {
+            return this;
+        }
+
+        @Nonnull
+        @Override
         public Type getType() {
             return type;
         }
@@ -1239,6 +1339,12 @@ public class Comparisons {
 
         @Nonnull
         @Override
+        public Comparison rebase(@Nonnull final AliasMap translationMap) {
+            return this;
+        }
+
+        @Nonnull
+        @Override
         public String typelessString() {
             return "NULL";
         }
@@ -1285,6 +1391,73 @@ public class Comparisons {
     }
 
     /**
+     * A predicate for comparisons to things unknown or opaque to the planner. We only know it is equal to some value.
+     */
+    public static class OpaqueEqualityComparison implements Comparison {
+        @Nullable
+        @Override
+        public Boolean eval(@Nonnull FDBRecordStoreBase<?> store, @Nonnull EvaluationContext context, @Nullable Object value) {
+            return false;
+        }
+
+        @Override
+        public void validate(@Nonnull final Descriptors.FieldDescriptor descriptor, final boolean fannedOut) {
+            throw new UnsupportedOperationException("comparison should not be used in a plan");
+        }
+
+        @Nonnull
+        @Override
+        public Type getType() {
+            return Type.EQUALS;
+        }
+
+        @Nullable
+        @Override
+        public Object getComparand(@Nullable FDBRecordStoreBase<?> store, @Nullable EvaluationContext context) {
+            return null;
+        }
+
+        @Nonnull
+        @Override
+        public Comparison rebase(@Nonnull final AliasMap translationMap) {
+            return this;
+        }
+
+        @Nonnull
+        @Override
+        public String typelessString() {
+            return ":?:";
+        }
+
+        @Override
+        public String toString() {
+            return Type.EQUALS + " " + typelessString();
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            // same as standard object implementation
+            return this == o;
+        }
+
+        @Override
+        public int hashCode() {
+            // same as standard object implementation
+            return System.identityHashCode(this);
+        }
+
+        @Override
+        public int planHash(@Nonnull final PlanHashKind hashKind) {
+            throw new UnsupportedOperationException("Hash Kind " + hashKind.name() + " is not supported");
+        }
+
+        @Override
+        public int queryHash(@Nonnull final QueryHashKind hashKind) {
+            throw new UnsupportedOperationException("Hash Kind " + hashKind.name() + " is not supported");
+        }
+    }
+
+    /**
      * A text-style comparison, such as containing a given set of tokens.
      */
     public static class TextComparison implements Comparison {
@@ -1316,6 +1489,12 @@ public class Comparisons {
             this.tokenStr = null;
             this.tokenizerName = tokenizerName;
             this.fallbackTokenizerName = fallbackTokenizerName;
+        }
+
+        @Nonnull
+        @Override
+        public Comparison rebase(@Nonnull final AliasMap translationMap) {
+            return this;
         }
 
         @Nonnull
@@ -1706,6 +1885,35 @@ public class Comparisons {
             return inner.getType();
         }
 
+        @Nonnull
+        @Override
+        public Comparison rebase(@Nonnull final AliasMap translationMap) {
+            final var rebasedInner = inner.rebase(translationMap);
+            if (inner == rebasedInner) {
+                return this;
+            } else {
+                return new MultiColumnComparison(rebasedInner);
+            }
+        }
+
+        @Nonnull
+        @Override
+        public Set<CorrelationIdentifier> getCorrelatedTo() {
+            return inner.getCorrelatedTo();
+        }
+
+        @Override
+        public boolean semanticEquals(@Nullable final Object other, @Nonnull final AliasMap aliasMap) {
+            if (this == other) {
+                return true;
+            }
+            if (other == null || getClass() != other.getClass()) {
+                return false;
+            }
+            MultiColumnComparison that = (MultiColumnComparison) other;
+            return this.inner.semanticEquals(that.inner, aliasMap);
+        }
+
         @Override
         public int planHash(@Nonnull final PlanHashKind hashKind) {
             switch (hashKind) {
@@ -1753,73 +1961,15 @@ public class Comparisons {
         }
 
         @Override
+        @SpotBugsSuppressWarnings("EQ_UNUSUAL")
+        @SuppressWarnings("EqualsWhichDoesntCheckParameterClass")
         public boolean equals(final Object o) {
-            if (this == o) {
-                return true;
-            }
-            if (o == null || getClass() != o.getClass()) {
-                return false;
-            }
-            MultiColumnComparison that = (MultiColumnComparison) o;
-            return this.inner.equals(that.inner);
+            return semanticEquals(o, AliasMap.identitiesFor(inner.getCorrelatedTo()));
         }
 
         @Override
         public String toString() {
             return inner.toString();
-        }
-    }
-
-    /**
-     * A text-style comparison, such as containing a given set of tokens.
-     */
-    public static class LuceneComparison implements Comparison {
-        private static final ObjectPlanHash BASE_HASH = new ObjectPlanHash("Lucene-Comparison");
-
-        @Nonnull
-        private final String query;
-
-        public LuceneComparison(@Nonnull String query) {
-            this.query = query;
-        }
-
-        @Nullable
-        @Override
-        public Boolean eval(@Nonnull final FDBRecordStoreBase<?> store, @Nonnull final EvaluationContext context, @Nullable final Object value) {
-            return true;
-        }
-
-        @Override
-        public void validate(@Nonnull final Descriptors.FieldDescriptor descriptor, final boolean fannedOut) {
-
-        }
-
-        @Nonnull
-        @Override
-        public Type getType() {
-            return Type.FULL_TEXT_LUCENE_QUERY;
-        }
-
-        @Nullable
-        @Override
-        public Object getComparand(@Nullable final FDBRecordStoreBase<?> store, @Nullable final EvaluationContext context) {
-            return query;
-        }
-
-        @Nonnull
-        @Override
-        public String typelessString() {
-            return query;
-        }
-
-        @Override
-        public int planHash(@Nonnull final PlanHashKind hashKind) {
-            return PlanHashable.objectsPlanHash(hashKind, BASE_HASH, query);
-        }
-
-        @Override
-        public int queryHash(@Nonnull final QueryHashable.QueryHashKind hashKind) {
-            return HashUtils.queryHash(hashKind, BASE_HASH, query);
         }
     }
 

@@ -20,8 +20,10 @@
 
 package com.apple.foundationdb.record.query.plan.planning;
 
-import com.apple.foundationdb.record.IndexScanType;
+import com.apple.foundationdb.record.Bindings;
 import com.apple.foundationdb.record.metadata.Key;
+import com.apple.foundationdb.record.provider.foundationdb.IndexScanComparisons;
+import com.apple.foundationdb.record.provider.foundationdb.IndexScanParameters;
 import com.apple.foundationdb.record.query.expressions.Comparisons;
 import com.apple.foundationdb.record.query.expressions.FieldWithComparison;
 import com.apple.foundationdb.record.query.expressions.Query;
@@ -59,10 +61,9 @@ public class RecordQueryPlanEqualityTest {
     }
 
     private RecordQueryPlan indexPlanEquals(String indexName, Object value) {
-        return new RecordQueryIndexPlan(indexName, IndexScanType.BY_VALUE,
-                new ScanComparisons(Arrays.asList(new Comparisons.SimpleComparison(Comparisons.Type.EQUALS, value)),
-                        Collections.emptySet()),
-                false);
+        IndexScanParameters scan = IndexScanComparisons.byValue(new ScanComparisons(Arrays.asList(new Comparisons.SimpleComparison(Comparisons.Type.EQUALS, value)),
+                        Collections.emptySet()));
+        return new RecordQueryIndexPlan(indexName, scan, false);
     }
 
     private RecordQueryPlan unionPlan(Object value1, Object value2) {
@@ -91,9 +92,9 @@ public class RecordQueryPlanEqualityTest {
             // don't test RecordQueryCoveringIndexPlan since mocking it is complicated
             () -> new RecordQueryFilterPlan(scanPlan(), Query.field("a_field").lessThan(50)),
             () -> indexPlanEquals("testIndex", 4),
-            () -> new RecordQueryInParameterJoinPlan(scanPlan(), "testField", "testField2", false, false),
+            () -> new RecordQueryInParameterJoinPlan(scanPlan(), "testField", Bindings.Internal.IN, "testField2", false, false),
             () -> intersectionPlan(2, "even"),
-            () -> new RecordQueryInValuesJoinPlan(scanPlan(), "testField", Arrays.asList(1, 2, 3),
+            () -> new RecordQueryInValuesJoinPlan(scanPlan(), "testField", Bindings.Internal.IN, Arrays.asList(1, 2, 3),
                     false, false),
             () -> new RecordQueryLoadByKeysPlan("param"),
             () -> scanPlan(),

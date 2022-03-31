@@ -34,10 +34,13 @@ import com.apple.foundationdb.record.metadata.expressions.EmptyKeyExpression;
 import com.apple.foundationdb.record.metadata.expressions.GroupingKeyExpression;
 import com.apple.foundationdb.record.metadata.expressions.KeyExpression.FanType;
 import com.apple.foundationdb.record.provider.foundationdb.keyspace.KeySpacePath;
+import com.apple.foundationdb.record.provider.foundationdb.properties.RecordLayerPropertyStorage;
 import com.apple.foundationdb.record.query.plan.PlannableIndexTypes;
 import com.apple.foundationdb.record.query.plan.QueryPlanner;
 import com.apple.foundationdb.record.query.plan.RecordQueryPlanner;
+import com.apple.foundationdb.record.query.plan.debug.DebuggerWithSymbolTables;
 import com.apple.foundationdb.record.query.plan.temp.CascadesPlanner;
+import com.apple.foundationdb.record.query.plan.temp.debug.Debugger;
 import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Descriptors;
@@ -106,13 +109,21 @@ public abstract class FDBRecordStoreTestBase extends FDBTestBase {
     }
 
     public FDBRecordContext openContext() {
-        final FDBRecordContextConfig config = FDBRecordContextConfig.newBuilder()
+        return openContext(RecordLayerPropertyStorage.newBuilder());
+    }
+
+    public FDBRecordContext openContext(@Nonnull final RecordLayerPropertyStorage.Builder propsBuilder) {
+        final FDBRecordContextConfig config = contextConfig(propsBuilder).build();
+        return fdb.openContext(config);
+    }
+
+    protected FDBRecordContextConfig.Builder contextConfig(@Nonnull final RecordLayerPropertyStorage.Builder propsBuilder) {
+        return FDBRecordContextConfig.newBuilder()
                 .setTimer(timer)
                 .setMdcContext(ImmutableMap.of("uuid", UUID.randomUUID().toString()))
                 .setTrackOpen(true)
                 .setSaveOpenStackTrace(true)
-                .build();
-        return fdb.openContext(config);
+                .setRecordContextProperties(propsBuilder.build());
     }
 
     @BeforeEach
@@ -160,6 +171,10 @@ public abstract class FDBRecordStoreTestBase extends FDBTestBase {
     public void setupPlanner(@Nullable PlannableIndexTypes indexTypes) {
         if (useRewritePlanner) {
             planner = new CascadesPlanner(recordStore.getRecordMetaData(), recordStore.getRecordStoreState());
+            if (Debugger.getDebugger() == null) {
+                Debugger.setDebugger(new DebuggerWithSymbolTables());
+            }
+            Debugger.setup();
         } else {
             if (indexTypes == null) {
                 indexTypes = PlannableIndexTypes.DEFAULT;

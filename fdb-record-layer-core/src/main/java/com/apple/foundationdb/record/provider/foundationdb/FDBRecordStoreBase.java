@@ -51,6 +51,7 @@ import com.apple.foundationdb.record.metadata.expressions.KeyExpression;
 import com.apple.foundationdb.record.provider.common.RecordSerializer;
 import com.apple.foundationdb.record.provider.foundationdb.keyspace.KeySpacePath;
 import com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache;
+import com.apple.foundationdb.record.query.IndexQueryabilityFilter;
 import com.apple.foundationdb.record.query.ParameterRelationshipGraph;
 import com.apple.foundationdb.record.query.RecordQuery;
 import com.apple.foundationdb.record.query.expressions.QueryComponent;
@@ -422,92 +423,92 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
 
     /**
      * Async version of {@link #saveRecord(Message)}.
-     * @param record the record to save
+     * @param rec the record to save
      * @return a future that completes with the stored record form of the saved record
      */
     @Nonnull
-    default CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull final M record) {
-        return saveRecordAsync(record, (FDBRecordVersion)null);
+    default CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull final M rec) {
+        return saveRecordAsync(rec, (FDBRecordVersion)null);
     }
 
     /**
      * Async version of {@link #saveRecord(Message, RecordExistenceCheck)}.
-     * @param record the record to save
+     * @param rec the record to save
      * @param existenceCheck when to throw an exception if a record with the same primary key does or does not already exist
      * @return a future that completes with the stored record form of the saved record
      */
     @Nonnull
-    default CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull final M record, @Nonnull RecordExistenceCheck existenceCheck) {
-        return saveRecordAsync(record, existenceCheck, null, VersionstampSaveBehavior.DEFAULT);
+    default CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull final M rec, @Nonnull RecordExistenceCheck existenceCheck) {
+        return saveRecordAsync(rec, existenceCheck, null, VersionstampSaveBehavior.DEFAULT);
     }
 
     /**
      * Async version of {@link #saveRecord(Message, FDBRecordVersion)}.
-     * @param record the record to save
+     * @param rec the record to save
      * @param version the associated record version
      * @return a future that completes with the stored record form of the saved record
      */
     @Nonnull
-    default CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull final M record, @Nullable FDBRecordVersion version) {
-        return saveRecordAsync(record, version, VersionstampSaveBehavior.DEFAULT);
+    default CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull final M rec, @Nullable FDBRecordVersion version) {
+        return saveRecordAsync(rec, version, VersionstampSaveBehavior.DEFAULT);
     }
 
     /**
      * Async version of {@link #saveRecord(Message, FDBRecordVersion, VersionstampSaveBehavior)}.
-     * @param record the record to save
+     * @param rec the record to save
      * @param version the associated record version
      * @param behavior the save behavior w.r.t. the given <code>version</code>
      * @return a future that completes with the stored record form of the saved record
      */
     @Nonnull
-    default CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull final M record, @Nullable FDBRecordVersion version, @Nonnull final VersionstampSaveBehavior behavior) {
-        return saveRecordAsync(record, RecordExistenceCheck.NONE, version, behavior);
+    default CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull final M rec, @Nullable FDBRecordVersion version, @Nonnull final VersionstampSaveBehavior behavior) {
+        return saveRecordAsync(rec, RecordExistenceCheck.NONE, version, behavior);
     }
 
     /**
      * Async version of {@link #saveRecord(Message, RecordExistenceCheck, FDBRecordVersion, VersionstampSaveBehavior)}.
-     * @param record the record to save
+     * @param rec the record to save
      * @param existenceCheck when to throw an exception if a record with the same primary key does or does not already exist
      * @param version the associated record version
      * @param behavior the save behavior w.r.t. the given <code>version</code>
      * @return a future that completes with the stored record form of the saved record
      */
     @Nonnull
-    CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull M record, @Nonnull RecordExistenceCheck existenceCheck,
+    CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull M rec, @Nonnull RecordExistenceCheck existenceCheck,
                                                           @Nullable FDBRecordVersion version, @Nonnull VersionstampSaveBehavior behavior);
 
     /**
      * Save the given record.
-     * @param record the record to be saved
+     * @param rec the record to be saved
      * @return wrapping object containing saved record and metadata
      */
     @Nonnull
-    default FDBStoredRecord<M> saveRecord(@Nonnull final M record) {
-        return saveRecord(record, (FDBRecordVersion)null);
+    default FDBStoredRecord<M> saveRecord(@Nonnull final M rec) {
+        return saveRecord(rec, (FDBRecordVersion)null);
     }
 
     /**
      * Save the given record.
-     * @param record the record to be saved
+     * @param rec the record to be saved
      * @param existenceCheck when to throw an exception if a record with the same primary key does or does not already exist
      * @return wrapping object containing saved record and metadata
      */
     @Nonnull
-    default FDBStoredRecord<M> saveRecord(@Nonnull final M record, @Nonnull RecordExistenceCheck existenceCheck) {
-        return saveRecord(record, existenceCheck, null, VersionstampSaveBehavior.DEFAULT);
+    default FDBStoredRecord<M> saveRecord(@Nonnull final M rec, @Nonnull RecordExistenceCheck existenceCheck) {
+        return saveRecord(rec, existenceCheck, null, VersionstampSaveBehavior.DEFAULT);
     }
 
     /**
      * Save the given record with a specific version. If <code>null</code>
      * is passed for <code>version</code>, then a new version is
      * created that will be unique for this record.
-     * @param record the record to be saved
+     * @param rec the record to be saved
      * @param version the version to associate with the record when saving
      * @return wrapping object containing saved record and metadata
      */
     @Nonnull
-    default FDBStoredRecord<M> saveRecord(@Nonnull final M record, @Nullable final FDBRecordVersion version) {
-        return saveRecord(record, version, VersionstampSaveBehavior.DEFAULT);
+    default FDBStoredRecord<M> saveRecord(@Nonnull final M rec, @Nullable final FDBRecordVersion version) {
+        return saveRecord(rec, version, VersionstampSaveBehavior.DEFAULT);
     }
 
     /**
@@ -516,14 +517,14 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
      * the method acts as {@link #saveRecord(Message, FDBRecordVersion)}. If behavior is <code>NO_VERSION</code> then
      * <code>version</code> is ignored and no version is saved. If behavior is <code>WITH_VERSION</code> then the value
      * of <code>version</code>  is stored as given by the caller.
-     * @param record the record to be saved
+     * @param rec the record to be saved
      * @param version the version to associate with the record when saving
      * @param behavior the save behavior w.r.t. the given <code>version</code>
      * @return wrapping object containing saved record and metadata
      */
     @Nonnull
-    default FDBStoredRecord<M> saveRecord(@Nonnull final M record, @Nullable final FDBRecordVersion version, @Nonnull final VersionstampSaveBehavior behavior) {
-        return saveRecord(record, RecordExistenceCheck.NONE, version, behavior);
+    default FDBStoredRecord<M> saveRecord(@Nonnull final M rec, @Nullable final FDBRecordVersion version, @Nonnull final VersionstampSaveBehavior behavior) {
+        return saveRecord(rec, RecordExistenceCheck.NONE, version, behavior);
     }
 
     /**
@@ -532,56 +533,56 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
      * the method acts as {@link #saveRecord(Message, FDBRecordVersion)}. If behavior is <code>NO_VERSION</code> then
      * <code>version</code> is ignored and no version is saved. If behavior is <code>WITH_VERSION</code> then the value
      * of <code>version</code>  is stored as given by the caller.
-     * @param record the record to be saved
+     * @param rec the record to be saved
      * @param existenceCheck when to throw an exception if a record with the same primary key does or does not already exist
      * @param version the version to associate with the record when saving
      * @param behavior the save behavior w.r.t. the given <code>version</code>
      * @return wrapping object containing saved record and metadata
      */
     @Nonnull
-    default FDBStoredRecord<M> saveRecord(@Nonnull final M record, @Nonnull RecordExistenceCheck existenceCheck,
+    default FDBStoredRecord<M> saveRecord(@Nonnull final M rec, @Nonnull RecordExistenceCheck existenceCheck,
                                          @Nullable final FDBRecordVersion version, @Nonnull final VersionstampSaveBehavior behavior) {
-        return getContext().asyncToSync(FDBStoreTimer.Waits.WAIT_SAVE_RECORD, saveRecordAsync(record, existenceCheck, version, behavior));
+        return getContext().asyncToSync(FDBStoreTimer.Waits.WAIT_SAVE_RECORD, saveRecordAsync(rec, existenceCheck, version, behavior));
     }
 
     /**
      * Save the given record and throw an exception if a record already exists with the same primary key.
-     * @param record the record to be saved
+     * @param rec the record to be saved
      * @return a future that completes with the stored record form of the saved record
      */
     @Nonnull
-    default CompletableFuture<FDBStoredRecord<M>> insertRecordAsync(@Nonnull final M record) {
-        return saveRecordAsync(record, RecordExistenceCheck.ERROR_IF_EXISTS);
+    default CompletableFuture<FDBStoredRecord<M>> insertRecordAsync(@Nonnull final M rec) {
+        return saveRecordAsync(rec, RecordExistenceCheck.ERROR_IF_EXISTS);
     }
 
     /**
      * Save the given record and throw an exception if a record already exists with the same primary key.
-     * @param record the record to be saved
+     * @param rec the record to be saved
      * @return wrapping object containing saved record and metadata
      */
     @Nonnull
-    default FDBStoredRecord<M> insertRecord(@Nonnull final M record) {
-        return saveRecord(record, RecordExistenceCheck.ERROR_IF_EXISTS);
+    default FDBStoredRecord<M> insertRecord(@Nonnull final M rec) {
+        return saveRecord(rec, RecordExistenceCheck.ERROR_IF_EXISTS);
     }
 
     /**
      * Save the given record and throw an exception if the record does not already exist in the database.
-     * @param record the record to be saved
+     * @param rec the record to be saved
      * @return a future that completes with the stored record form of the saved record
      */
     @Nonnull
-    default CompletableFuture<FDBStoredRecord<M>> updateRecordAsync(@Nonnull final M record) {
-        return saveRecordAsync(record, RecordExistenceCheck.ERROR_IF_NOT_EXISTS_OR_RECORD_TYPE_CHANGED);
+    default CompletableFuture<FDBStoredRecord<M>> updateRecordAsync(@Nonnull final M rec) {
+        return saveRecordAsync(rec, RecordExistenceCheck.ERROR_IF_NOT_EXISTS_OR_RECORD_TYPE_CHANGED);
     }
 
     /**
      * Save the given record and throw an exception if the record does not already exist in the database.
-     * @param record the record to be saved
+     * @param rec the record to be saved
      * @return wrapping object containing saved record and metadata
      */
     @Nonnull
-    default FDBStoredRecord<M> updateRecord(@Nonnull final M record) {
-        return saveRecord(record, RecordExistenceCheck.ERROR_IF_NOT_EXISTS_OR_RECORD_TYPE_CHANGED);
+    default FDBStoredRecord<M> updateRecord(@Nonnull final M rec) {
+        return saveRecord(rec, RecordExistenceCheck.ERROR_IF_NOT_EXISTS_OR_RECORD_TYPE_CHANGED);
     }
 
     /**
@@ -821,6 +822,18 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
     /**
      * Scan the entries in an index.
      * @param index the index to scan
+     * @param scanBounds the scan to preform
+     * @param continuation any continuation from a previous scan
+     * @param scanProperties skip, limit and other scan properties
+     * @return a cursor that will scan the index, picking up at continuation, and honoring the given scan properties
+     */
+    @Nonnull
+    RecordCursor<IndexEntry> scanIndex(@Nonnull Index index, @Nonnull IndexScanBounds scanBounds, @Nullable byte[] continuation,
+                                       @Nonnull ScanProperties scanProperties);
+
+    /**
+     * Scan the entries in an index.
+     * @param index the index to scan
      * @param scanType the type of scan to perform
      * @param range range to scan
      * @param continuation any continuation from a previous scan
@@ -828,9 +841,11 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
      * @return a cursor that will scan the index, picking up at continuation, and honoring the given scan properties
      */
     @Nonnull
-    RecordCursor<IndexEntry> scanIndex(@Nonnull Index index, @Nonnull IndexScanType scanType,
-                                       @Nonnull TupleRange range, @Nullable byte[] continuation,
-                                       @Nonnull ScanProperties scanProperties);
+    default RecordCursor<IndexEntry> scanIndex(@Nonnull Index index, @Nonnull IndexScanType scanType,
+                                               @Nonnull TupleRange range, @Nullable byte[] continuation,
+                                               @Nonnull ScanProperties scanProperties) {
+        return scanIndex(index, new IndexScanRange(scanType, range), continuation, scanProperties);
+    }
 
     /**
      * Scan the records pointed to by an index.
@@ -996,8 +1011,8 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
                                                                         @Nonnull final IndexOrphanBehavior orphanBehavior,
                                                                         @Nonnull final ExecuteState executeState) {
         final Tuple primaryKey = entry.getPrimaryKey();
-        return loadRecordInternal(primaryKey, executeState,false).thenApply(record -> {
-            if (record == null) {
+        return loadRecordInternal(primaryKey, executeState,false).thenApply(rec -> {
+            if (rec == null) {
                 switch (orphanBehavior) {
                     case SKIP:
                         return null;
@@ -1016,7 +1031,7 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
                         throw new RecordCoreException("Unexpected index orphan behavior: " + orphanBehavior);
                 }
             }
-            return new FDBIndexedRecord<>(entry, record);
+            return new FDBIndexedRecord<>(entry, rec);
         });
     }
 
@@ -1403,7 +1418,26 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
      * @return a future that will complete to the number of records
      */
     @Nonnull
-    CompletableFuture<Long> getSnapshotRecordCount(@Nonnull KeyExpression key, @Nonnull Key.Evaluated value);
+    default CompletableFuture<Long> getSnapshotRecordCount(@Nonnull KeyExpression key, @Nonnull Key.Evaluated value) {
+        // Using IndexQueryabilityFilter.TRUE probably isn't ideal here, but is used to preserve backwards
+        // compatibility
+        return getSnapshotRecordCount(key, value, IndexQueryabilityFilter.TRUE);
+    }
+
+    /**
+     * Get the number of records in a portion of the record store determined by a group key expression.
+     *
+     * There must be a suitably grouped, readable {@code COUNT} type index defined, that is not filtered by
+     * {@code indexQueryabilityFilter}, or a suitable record count key on the metadata.
+     * @param key the grouping key expression
+     * @param value the value of {@code key} to match
+     * @param indexQueryabilityFilter a filter to restrict which indexes can be used when planning. If there is a
+     * record count key, that may be used, and will not be checked against this filter.
+     * @return a future that will complete to the number of records
+     */
+    @Nonnull
+    CompletableFuture<Long> getSnapshotRecordCount(@Nonnull KeyExpression key, @Nonnull Key.Evaluated value,
+                                                   @Nonnull IndexQueryabilityFilter indexQueryabilityFilter);
 
     /**
      * Get the number of records in the record store of the given record type.
@@ -1413,48 +1447,74 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
      * @return a future that will complete to the number of records
      */
     @Nonnull
-    CompletableFuture<Long> getSnapshotRecordCountForRecordType(@Nonnull String recordTypeName);
+    default CompletableFuture<Long> getSnapshotRecordCountForRecordType(@Nonnull String recordTypeName) {
+        // Using IndexQueryabilityFilter.TRUE probably isn't ideal here, but is used to preserve backwards
+        // compatibility
+        return getSnapshotRecordCountForRecordType(recordTypeName, IndexQueryabilityFilter.TRUE);
+    }
+
+    /**
+     * Get the number of records in the record store of the given record type.
+     *
+     * The record type must have a readable {@code COUNT} index defined for it, that is not excluded by the
+     * {@code indexQueryabilityFilter}.
+     * @param recordTypeName record type for which to count records
+     * @param indexQueryabilityFilter a filter to restrict which indexes can be used when planning.
+     * @return a future that will complete to the number of records
+     */
+    @Nonnull
+    CompletableFuture<Long> getSnapshotRecordCountForRecordType(@Nonnull String recordTypeName,
+                                                                @Nonnull IndexQueryabilityFilter indexQueryabilityFilter);
 
     default CompletableFuture<Long> getSnapshotRecordUpdateCount() {
         return getSnapshotRecordUpdateCount(EmptyKeyExpression.EMPTY, Key.Evaluated.EMPTY);
     }
 
     default CompletableFuture<Long> getSnapshotRecordUpdateCount(@Nonnull KeyExpression key, @Nonnull Key.Evaluated value) {
-        return evaluateAggregateFunction(Collections.emptyList(), IndexFunctionHelper.countUpdates(key), value, IsolationLevel.SNAPSHOT)
+        // Using IndexQueryabilityFilter.TRUE probably isn't ideal here, but is used to preserve backwards
+        // compatibility
+        return getSnapshotRecordUpdateCount(key, value, IndexQueryabilityFilter.TRUE);
+    }
+
+    default CompletableFuture<Long> getSnapshotRecordUpdateCount(@Nonnull KeyExpression key, @Nonnull Key.Evaluated value,
+                                                                 @Nonnull IndexQueryabilityFilter indexQueryabilityFilter) {
+        return evaluateAggregateFunction(
+                Collections.emptyList(), IndexFunctionHelper.countUpdates(key), TupleRange.allOf(value.toTuple()),
+                IsolationLevel.SNAPSHOT, indexQueryabilityFilter)
                 .thenApply(tuple -> tuple.getLong(0));
     }
 
     /**
      * Evaluate a {@link RecordFunction} against a record.
      * @param function the function to evaluate
-     * @param record the record to evaluate against
+     * @param rec the record to evaluate against
      * @param <T> the type of the result
      * @return a future that will complete with the result of evaluating the function against the record
      */
     @Nonnull
     default <T> CompletableFuture<T> evaluateRecordFunction(@Nonnull RecordFunction<T> function,
-                                                            @Nonnull FDBRecord<M> record) {
-        return evaluateRecordFunction(EvaluationContext.EMPTY, function, record);
+                                                            @Nonnull FDBRecord<M> rec) {
+        return evaluateRecordFunction(EvaluationContext.EMPTY, function, rec);
     }
 
     /**
      * Evaluate a {@link RecordFunction} against a record.
      * @param evaluationContext evaluation context containing parameter bindings
      * @param function the function to evaluate
-     * @param record the record to evaluate against
+     * @param rec the record to evaluate against
      * @param <T> the type of the result
      * @return a future that will complete with the result of evaluating the function against the record
      */
     @Nonnull
     default <T> CompletableFuture<T> evaluateRecordFunction(@Nonnull EvaluationContext evaluationContext,
                                                             @Nonnull RecordFunction<T> function,
-                                                            @Nonnull FDBRecord<M> record) {
+                                                            @Nonnull FDBRecord<M> rec) {
         if (function instanceof IndexRecordFunction<?>) {
             IndexRecordFunction<T> indexRecordFunction = (IndexRecordFunction<T>)function;
-            return evaluateIndexRecordFunction(evaluationContext, indexRecordFunction, record);
+            return evaluateIndexRecordFunction(evaluationContext, indexRecordFunction, rec);
         } else if (function instanceof StoreRecordFunction<?>) {
             StoreRecordFunction<T> storeRecordFunction = (StoreRecordFunction<T>)function;
-            return evaluateStoreFunction(evaluationContext, storeRecordFunction, record);
+            return evaluateStoreFunction(evaluationContext, storeRecordFunction, rec);
         }
         throw new RecordCoreException("Cannot evaluate record function " + function);
     }
@@ -1464,25 +1524,25 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
      * @param <T> the type of the result
      * @param evaluationContext evaluation context containing parameter bindings
      * @param function the function to evaluate
-     * @param record the record to evaluate against
+     * @param rec the record to evaluate against
      * @return a future that will complete with the result of evaluating the function against the record
      */
     @Nonnull
     <T> CompletableFuture<T> evaluateIndexRecordFunction(@Nonnull EvaluationContext evaluationContext,
                                                          @Nonnull IndexRecordFunction<T> function,
-                                                         @Nonnull FDBRecord<M> record);
+                                                         @Nonnull FDBRecord<M> rec);
 
     /**
      * Evaluate a {@link StoreRecordFunction} against a record.
      * @param <T> the type of the result
      * @param function the function to evaluate
-     * @param record the record to evaluate against
+     * @param rec the record to evaluate against
      * @return a future that will complete with the result of evaluating the function against the record
      */
     @Nonnull
     default <T> CompletableFuture<T> evaluateStoreFunction(@Nonnull StoreRecordFunction<T> function,
-                                                           @Nonnull FDBRecord<M> record) {
-        return evaluateStoreFunction(EvaluationContext.EMPTY, function, record);
+                                                           @Nonnull FDBRecord<M> rec) {
+        return evaluateStoreFunction(EvaluationContext.EMPTY, function, rec);
     }
 
     /**
@@ -1490,13 +1550,13 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
      * @param <T> the type of the result
      * @param evaluationContext evaluation context containing parameter bindings
      * @param function the function to evaluate
-     * @param record the record to evaluate against
+     * @param rec the record to evaluate against
      * @return a future that will complete with the result of evaluating the function against the record
      */
     @Nonnull
     <T> CompletableFuture<T> evaluateStoreFunction(@Nonnull EvaluationContext evaluationContext,
                                                    @Nonnull StoreRecordFunction<T> function,
-                                                   @Nonnull FDBRecord<M> record);
+                                                   @Nonnull FDBRecord<M> rec);
 
     /**
      * Evaluate an {@link IndexAggregateFunction} against a range of the store.
@@ -1545,10 +1605,32 @@ public interface FDBRecordStoreBase<M extends Message> extends RecordMetaDataPro
      * @return a future that will complete with the result of evaluating the aggregate
      */
     @Nonnull
+    default CompletableFuture<Tuple> evaluateAggregateFunction(@Nonnull List<String> recordTypeNames,
+                                                               @Nonnull IndexAggregateFunction aggregateFunction,
+                                                               @Nonnull TupleRange range,
+                                                               @Nonnull IsolationLevel isolationLevel) {
+        // Using IndexQueryabilityFilter.TRUE probably isn't ideal here, but is used to preserve backwards
+        // compatibility
+        return evaluateAggregateFunction(recordTypeNames, aggregateFunction, range, isolationLevel,
+                IndexQueryabilityFilter.TRUE);
+    }
+
+    /**
+     * Evaluate an {@link IndexAggregateFunction} against a range of the store.
+     * @param recordTypeNames record types for which to find a matching index
+     * @param aggregateFunction the function to evaluate
+     * @param range the range of records (group) for which to evaluate
+     * @param isolationLevel whether to use snapshot reads
+     * @param indexQueryabilityFilter a filter to restrict which indexes can be used when planning. This will not be
+     * consulted if the aggregateFunction already has a readable index
+     * @return a future that will complete with the result of evaluating the aggregate
+     */
+    @Nonnull
     CompletableFuture<Tuple> evaluateAggregateFunction(@Nonnull List<String> recordTypeNames,
                                                        @Nonnull IndexAggregateFunction aggregateFunction,
                                                        @Nonnull TupleRange range,
-                                                       @Nonnull IsolationLevel isolationLevel);
+                                                       @Nonnull IsolationLevel isolationLevel,
+                                                       @Nonnull IndexQueryabilityFilter indexQueryabilityFilter);
 
     /**
      * Get a query result record from a stored record.

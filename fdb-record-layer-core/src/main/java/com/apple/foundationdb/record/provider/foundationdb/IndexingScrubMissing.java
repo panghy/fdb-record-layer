@@ -71,15 +71,18 @@ public class IndexingScrubMissing extends IndexingBase {
     @Nonnull private static final IndexBuildProto.IndexBuildIndexingStamp myIndexingTypeStamp = compileIndexingTypeStamp();
 
     @Nonnull private final OnlineIndexScrubber.ScrubbingPolicy scrubbingPolicy;
+    @Nonnull private final AtomicLong missingCount;
     private long scanCounter = 0;
     private int logWarningCounter;
 
     public IndexingScrubMissing(@Nonnull final IndexingCommon common,
                                 @Nonnull final OnlineIndexer.IndexingPolicy policy,
-                                @Nonnull final OnlineIndexScrubber.ScrubbingPolicy scrubbingPolicy) {
+                                @Nonnull final OnlineIndexScrubber.ScrubbingPolicy scrubbingPolicy,
+                                @Nonnull final AtomicLong missingCount) {
         super(common, policy, true);
         this.scrubbingPolicy = scrubbingPolicy;
         this.logWarningCounter = scrubbingPolicy.getLogWarningsLimit();
+        this.missingCount = missingCount;
     }
 
     @Override
@@ -144,7 +147,7 @@ public class IndexingScrubMissing extends IndexingBase {
 
         // scrubbing only readable, VALUE, idempotence indexes (at least for now)
         validateOrThrowEx(maintainer.isIdempotent(), "scrubbed index is not idempotent");
-        validateOrThrowEx(index.getType().equals(IndexTypes.VALUE), "scrubbed index is not a VALUE index");
+        validateOrThrowEx(index.getType().equals(IndexTypes.VALUE) || scrubbingPolicy.ignoreIndexTypeCheck(), "scrubbed index is not a VALUE index");
         validateOrThrowEx(store.getIndexState(index) == IndexState.READABLE, "scrubbed index is not readable");
 
         RangeSet rangeSet = new RangeSet(indexScrubRecordsRangeSubspace(store, index));
@@ -173,8 +176,9 @@ public class IndexingScrubMissing extends IndexingBase {
             final AtomicReference<RecordCursorResult<FDBStoredRecord<Message>>> lastResult = new AtomicReference<>(RecordCursorResult.exhausted());
             final long scanLimit = scrubbingPolicy.getEntriesScanLimit();
 
+            final boolean isIdempotent = true ; // Note that currently we only scrub idempotent indexes
             return iterateRangeOnly(store, cursor, this::getRecordIfMissingIndex,
-                    lastResult, hasMore, recordsScanned)
+                    lastResult, hasMore, recordsScanned, isIdempotent)
                     .thenApply(vignore -> hasMore.get() ?
                                           lastResult.get().get().getPrimaryKey() :
                                           rangeEnd)
@@ -195,7 +199,7 @@ public class IndexingScrubMissing extends IndexingBase {
     private CompletableFuture<FDBStoredRecord<Message>> getRecordIfMissingIndex(FDBRecordStore store, final RecordCursorResult<FDBStoredRecord<Message>> currResult) {
         final FDBStoredRecord<Message> rec = currResult.get();
         // return true if an index is missing and updated
-        if (!common.recordTypes.contains(rec.getRecordType())) {
+        if (!common.getAllRecordTypes().contains(rec.getRecordType())) {
             return CompletableFuture.completedFuture(null);
         }
 
@@ -233,6 +237,7 @@ public class IndexingScrubMissing extends IndexingBase {
                                 .addKeysAndValues(common.indexLogMessageKeyValues())
                                 .toString());
                     }
+                    missingCount.incrementAndGet();
                     final FDBStoreTimer timer = getRunner().getTimer();
                     timerIncrement(timer, FDBStoreTimer.Counts.INDEX_SCRUBBER_MISSING_ENTRIES);
                     if (scrubbingPolicy.allowRepair()) {

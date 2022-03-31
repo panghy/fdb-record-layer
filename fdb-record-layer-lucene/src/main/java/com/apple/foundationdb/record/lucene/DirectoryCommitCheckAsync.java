@@ -26,6 +26,7 @@ import com.apple.foundationdb.record.lucene.directory.FDBDirectory;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.IndexMaintainerState;
 import com.apple.foundationdb.subspace.Subspace;
+import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.IOUtils;
 import org.slf4j.Logger;
@@ -83,29 +84,30 @@ public class DirectoryCommitCheckAsync implements FDBRecordContext.CommitCheckAs
      * Attempts to get the commit check from the context and if it cannot find it, creates one and adds it to the context.
      *
      * @param state state
+     * @param groupingKey tuple
      * @return DirectoryCommitCheckAsync
      */
     @Nonnull
-    protected static DirectoryCommitCheckAsync getOrCreateDirectoryCommitCheckAsync(@Nonnull final IndexMaintainerState state) {
+    protected static DirectoryCommitCheckAsync getOrCreateDirectoryCommitCheckAsync(@Nonnull final IndexMaintainerState state, @Nonnull Tuple groupingKey) {
+        return getOrCreateDirectoryCommitCheckAsync(state, state.indexSubspace.subspace(groupingKey));
+    }
+
+    @Nonnull
+    protected static DirectoryCommitCheckAsync getOrCreateDirectoryCommitCheckAsync(@Nonnull final IndexMaintainerState state, @Nonnull Subspace directorySubspace) {
         synchronized (state.context) {
-            DirectoryCommitCheckAsync directoryCheck = state.context.getInSession(getDirectoryName(state), DirectoryCommitCheckAsync.class);
+            DirectoryCommitCheckAsync directoryCheck = state.context.getInSession(getReaderSubspace(directorySubspace), DirectoryCommitCheckAsync.class);
             if (directoryCheck == null) {
-                directoryCheck = new DirectoryCommitCheckAsync(state.indexSubspace, state.context);
+                directoryCheck = new DirectoryCommitCheckAsync(directorySubspace, state.context);
                 state.context.addCommitCheck(directoryCheck);
-                state.context.putInSessionIfAbsent(getDirectoryName(state), directoryCheck);
+                state.context.putInSessionIfAbsent(getReaderSubspace(directorySubspace), directoryCheck);
             }
             return directoryCheck;
         }
     }
 
-    /**
-     * The directory name in the context.
-     *
-     * @param state state
-     * @return String
-     */
-    private static String getDirectoryName(@Nonnull final IndexMaintainerState state) {
-        return "directory$" + state.index.getName();
+    @Nonnull
+    private static Subspace getReaderSubspace(@Nonnull final Subspace directorySubspace) {
+        return directorySubspace.subspace(Tuple.from("r"));
     }
 }
 

@@ -45,10 +45,6 @@ public class IndexScanType implements PlanHashable {
     public static final IndexScanType BY_TIME_WINDOW = new IndexScanType("BY_TIME_WINDOW");
     @Nonnull
     public static final IndexScanType BY_TEXT_TOKEN = new IndexScanType("BY_TEXT_TOKEN");
-    @Nonnull
-    public static final IndexScanType BY_LUCENE = new IndexScanType("BY_LUCENE");
-    @Nonnull
-    public static final IndexScanType BY_LUCENE_FULL_TEXT = new IndexScanType("BY_LUCENE_FULL_TEXT");
 
     private final String name;
 

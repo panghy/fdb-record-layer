@@ -25,10 +25,8 @@ import com.apple.foundationdb.record.ByteArrayContinuation;
 import com.apple.foundationdb.record.IndexEntry;
 import com.apple.foundationdb.record.RecordCoreException;
 import com.apple.foundationdb.record.RecordCursorContinuation;
-import com.apple.foundationdb.record.RecordCursorProto;
 import com.apple.foundationdb.record.RecordCursorResult;
 import com.apple.foundationdb.record.RecordCursorVisitor;
-import com.apple.foundationdb.record.RecordMetaDataProto;
 import com.apple.foundationdb.record.ScanProperties;
 import com.apple.foundationdb.record.cursors.BaseCursor;
 import com.apple.foundationdb.record.cursors.CursorLimitManager;
@@ -45,7 +43,6 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
-import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
@@ -59,6 +56,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 
 import static com.apple.foundationdb.record.lucene.DirectoryCommitCheckAsync.getOrCreateDirectoryCommitCheckAsync;
 import static com.apple.foundationdb.record.lucene.IndexWriterCommitCheckAsync.getIndexWriterCommitCheckAsync;
@@ -71,9 +69,11 @@ import static com.apple.foundationdb.record.lucene.IndexWriterCommitCheckAsync.g
 class LuceneRecordCursor implements BaseCursor<IndexEntry> {
     private static final Logger LOGGER = LoggerFactory.getLogger(LuceneRecordCursor.class);
     // pagination within single instance of record cursor for lucene queries.
-    private static final int MAX_PAGE_SIZE = 200;
+    private static final int MAX_PAGE_SIZE = 201;
     @Nonnull
     private final Executor executor;
+    @Nullable
+    private final ExecutorService executorService;
     @Nonnull
     private final CursorLimitManager limitManager;
     @Nullable
@@ -91,22 +91,27 @@ class LuceneRecordCursor implements BaseCursor<IndexEntry> {
     private Sort sort = null;
     private ScoreDoc searchAfter = null;
     private boolean exhausted = false;
+    @Nullable
+    private final Tuple groupingKey;
 
     //TODO: once we fix the available fields logic for lucene to take into account which fields are
     // stored there should be no need to pass in a list of fields, or we could only pass in the store field values.
     LuceneRecordCursor(@Nonnull Executor executor,
+                       @Nullable ExecutorService executorService,
                        @Nonnull ScanProperties scanProperties,
                        @Nonnull final IndexMaintainerState state, Query query,
-                       byte[] continuation, List<KeyExpression> fields) {
+                       byte[] continuation,
+                       @Nullable Tuple groupingKey) {
         this.state = state;
         this.executor = executor;
+        this.executorService = executorService;
         this.limitManager = new CursorLimitManager(state.context, scanProperties);
         this.limitRemaining = scanProperties.getExecuteProperties().getReturnedRowLimitOrMax();
         this.timer = state.context.getTimer();
         this.query = query;
         if (continuation != null) {
             try {
-                RecordCursorProto.LuceneIndexContinuation luceneIndexContinuation = RecordCursorProto.LuceneIndexContinuation.parseFrom(continuation);
+                LuceneContinuationProto.LuceneIndexContinuation luceneIndexContinuation = LuceneContinuationProto.LuceneIndexContinuation.parseFrom(continuation);
                 searchAfter = new ScoreDoc((int)luceneIndexContinuation.getDoc(), luceneIndexContinuation.getScore(), (int)luceneIndexContinuation.getShard());
             } catch (Exception e) {
                 throw new RecordCoreException("Invalid continuation for Lucene index", "ContinuationValues", continuation, e);
@@ -116,7 +121,8 @@ class LuceneRecordCursor implements BaseCursor<IndexEntry> {
         if (scanProperties.getExecuteProperties().getSkip() > 0) {
             this.currentPosition += scanProperties.getExecuteProperties().getSkip();
         }
-        this.fields = fields;
+        this.fields = state.index.getRootExpression().normalizeKeyForPositions();
+        this.groupingKey = groupingKey;
     }
 
     @Nonnull
@@ -159,8 +165,15 @@ class LuceneRecordCursor implements BaseCursor<IndexEntry> {
                     if (limitRemaining != Integer.MAX_VALUE) {
                         limitRemaining--;
                     }
-                    List<Object> setPrimaryKey = Tuple.fromBytes(pk.bytes).getItems();
+                    Tuple setPrimaryKey = Tuple.fromBytes(pk.bytes);
+                    // Initialized with values that aren't really legal in a Tuple to find offset bugs.
                     List<Object> fieldValues = Lists.newArrayList(fields);
+                    if (groupingKey != null) {
+                        // Grouping keys are at the front.
+                        for (int i = 0; i < groupingKey.size(); i++) {
+                            fieldValues.set(i, groupingKey.get(i));
+                        }
+                    }
                     int[] keyPos = state.index.getPrimaryKeyComponentPositions();
                     Tuple tuple;
                     if (keyPos != null) {
@@ -207,7 +220,7 @@ class LuceneRecordCursor implements BaseCursor<IndexEntry> {
         if (currentPosition >= topDocs.scoreDocs.length && limitRemaining > 0) {
             return ByteArrayContinuation.fromNullable(null);
         } else {
-            RecordCursorProto.LuceneIndexContinuation continuation = RecordCursorProto.LuceneIndexContinuation.newBuilder()
+            LuceneContinuationProto.LuceneIndexContinuation continuation = LuceneContinuationProto.LuceneIndexContinuation.newBuilder()
                     .setDoc(searchAfter.doc)
                     .setScore(searchAfter.score)
                     .setShard(searchAfter.shardIndex)
@@ -236,14 +249,14 @@ class LuceneRecordCursor implements BaseCursor<IndexEntry> {
     }
 
     private synchronized IndexReader getIndexReader() throws IOException {
-        IndexWriterCommitCheckAsync writerCheck = getIndexWriterCommitCheckAsync(state);
-        return writerCheck == null ? DirectoryReader.open(getOrCreateDirectoryCommitCheckAsync(state).getDirectory()) : DirectoryReader.open(writerCheck.indexWriter);
+        IndexWriterCommitCheckAsync writerCheck = getIndexWriterCommitCheckAsync(state, groupingKey);
+        return writerCheck == null ? DirectoryReader.open(getOrCreateDirectoryCommitCheckAsync(state, groupingKey).getDirectory()) : DirectoryReader.open(writerCheck.indexWriter);
     }
 
     private void performScan() throws IOException {
         long startTime = System.nanoTime();
         indexReader = getIndexReader();
-        searcher = new IndexSearcher(indexReader);
+        searcher = new IndexSearcher(indexReader, executorService);
         int limit = Math.min(limitRemaining, MAX_PAGE_SIZE);
         TopDocs newTopDocs;
         if (searchAfter != null && sort != null) {
@@ -263,12 +276,8 @@ class LuceneRecordCursor implements BaseCursor<IndexEntry> {
             searchAfter = topDocs.scoreDocs[topDocs.scoreDocs.length - 1];
         }
         if (timer != null) {
-            timer.recordSinceNanoTime(FDBStoreTimer.Events.LUCENE_INDEX_SCAN, startTime);
-            timer.increment(FDBStoreTimer.Counts.LUCENE_SCAN_MATCHED_DOCUMENTS, topDocs.scoreDocs.length);
+            timer.recordSinceNanoTime(LuceneEvents.Events.LUCENE_INDEX_SCAN, startTime);
+            timer.increment(LuceneEvents.Counts.LUCENE_SCAN_MATCHED_DOCUMENTS, topDocs.scoreDocs.length);
         }
-    }
-
-    public void setSort(RecordMetaDataProto.KeyExpression sortKeyExpression) {
-        sort = new Sort(new SortField(sortKeyExpression.getField().getFieldName(), SortField.Type.STRING));
     }
 }

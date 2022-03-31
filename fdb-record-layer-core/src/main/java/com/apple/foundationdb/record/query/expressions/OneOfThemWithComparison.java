@@ -41,6 +41,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * A {@link QueryComponent} that evaluates a {@link com.apple.foundationdb.record.query.expressions.Comparisons.Comparison} against each of the values of a repeated field and is satisfied if any of those are.
@@ -64,7 +65,7 @@ public class OneOfThemWithComparison extends BaseRepeatedField implements Compon
     @Override
     @Nullable
     public <M extends Message> Boolean evalMessage(@Nonnull FDBRecordStoreBase<M> store, @Nonnull EvaluationContext context,
-                                                   @Nullable FDBRecord<M> record, @Nullable Message message) {
+                                                   @Nullable FDBRecord<M> rec, @Nullable Message message) {
         if (message == null ) {
             return getComparison().eval(store, context, null);
         }
@@ -100,15 +101,20 @@ public class OneOfThemWithComparison extends BaseRepeatedField implements Compon
         return new OneOfThemWithComparison(getFieldName(), getEmptyMode(), comparison);
     }
 
+    @Nonnull
     @Override
-    public GraphExpansion expand(@Nonnull final CorrelationIdentifier baseAlias, @Nonnull final List<String> fieldNamePrefix) {
+    public GraphExpansion expand(@Nonnull final CorrelationIdentifier baseAlias,
+                                 @Nonnull Supplier<Quantifier.ForEach> baseQuantifierSupplier,
+                                 @Nonnull final List<String> fieldNamePrefix) {
         List<String> fieldNames = ImmutableList.<String>builder()
                 .addAll(fieldNamePrefix)
                 .add(getFieldName())
                 .build();
-        final Quantifier childBase = Quantifier.forEach(GroupExpressionRef.of(ExplodeExpression.explodeField(baseAlias, 0, fieldNames)));
+        final Quantifier.ForEach childBase = Quantifier.forEach(GroupExpressionRef.of(ExplodeExpression.explodeField(baseAlias, 0, fieldNames)));
         final SelectExpression selectExpression =
-                GraphExpansion.ofPredicate(new QuantifiedObjectValue(childBase.getAlias()).withComparison(comparison)).buildSelectWithBase(childBase);
+                GraphExpansion.ofPredicate(QuantifiedObjectValue.of(childBase.getAlias()).withComparison(comparison))
+                        .withBase(childBase)
+                        .buildSelect();
         final Quantifier.Existential childQuantifier = Quantifier.existential(GroupExpressionRef.of(selectExpression));
 
         // create a query component that creates a path to this prefix and then applies this to it

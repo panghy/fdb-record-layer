@@ -53,13 +53,13 @@ public interface RecordSerializer<M extends Message> {
      *
      * @param metaData the store's meta-data
      * @param recordType the record type of the message
-     * @param record the Protobuf record to serialize
+     * @param rec the Protobuf record to serialize
      * @param timer a timer used to instrument serialization
      * @return the serialized record
      */
     @Nonnull
     byte[] serialize(@Nonnull RecordMetaData metaData, @Nonnull RecordType recordType,
-                     @Nonnull M record, @Nullable StoreTimer timer);
+                     @Nonnull M rec, @Nullable StoreTimer timer);
 
     /**
      * Convert a byte array to a Protobuf record. This should be the inverse of the
@@ -112,7 +112,8 @@ public interface RecordSerializer<M extends Message> {
         /** The amount of time spent encrypting serialized bytes. */
         ENCRYPT_SERIALIZED_RECORD("encrypt serialized record"),
         /** The amount of time spent decrypting serialized bytes. */
-        DECRYPT_SERIALIZED_RECORD("decrypt serialized record");
+        DECRYPT_SERIALIZED_RECORD("decrypt serialized record"),
+        ;
 
         private final String title;
         private final String logKey;
@@ -145,7 +146,12 @@ public interface RecordSerializer<M extends Message> {
     @API(API.Status.UNSTABLE)
     enum Counts implements StoreTimer.Count {
         /** The number of times that record compression was not effective and the record was kept uncompressed. */
-        ESCHEW_RECORD_COMPRESSION("eschew record compression");
+        ESCHEW_RECORD_COMPRESSION("eschew record compression"),
+        /** Total record bytes for which compression was attempted. */
+        RECORD_BYTES_BEFORE_COMPRESSION("record bytes before compression"),
+        /** Total record bytes after compression was attempted. */
+        RECORD_BYTES_AFTER_COMPRESSION("record bytes after compression"),
+        ;
 
         private final String title;
         private final boolean isSize;

@@ -38,8 +38,10 @@ import com.google.protobuf.Message;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 @API(API.Status.UNSTABLE)
@@ -61,7 +63,6 @@ public class OnlineIndexScrubber implements AutoCloseable {
                         @Nonnull Collection<RecordType> recordTypes,
                         @Nonnull Function<OnlineIndexer.Config, OnlineIndexer.Config> configLoader,
                         @Nonnull OnlineIndexer.Config config,
-                        boolean syntheticIndex,
                         long leaseLengthMillis,
                         boolean trackProgress,
                         @Nonnull OnlineIndexScrubber.ScrubbingPolicy scrubbingPolicy) {
@@ -69,8 +70,7 @@ public class OnlineIndexScrubber implements AutoCloseable {
         this.runner = runner;
         this.scrubbingPolicy = scrubbingPolicy;
         this.common = new IndexingCommon(runner, recordStoreBuilder,
-                index, recordTypes, configLoader, config,
-                syntheticIndex,
+                Collections.singletonList(index), recordTypes, configLoader, config,
                 trackProgress,
                 true, // always use synchronized session
                 leaseLengthMillis);
@@ -81,13 +81,13 @@ public class OnlineIndexScrubber implements AutoCloseable {
         common.close();
     }
 
-    private IndexingBase getScrubber(ScrubbingType type) {
+    private IndexingBase getScrubber(ScrubbingType type, AtomicLong count) {
         switch (type) {
             case DANGLING:
-                return new IndexingScrubDangling(common, OnlineIndexer.IndexingPolicy.DEFAULT, scrubbingPolicy);
+                return new IndexingScrubDangling(common, OnlineIndexer.IndexingPolicy.DEFAULT, scrubbingPolicy, count);
 
             case MISSING:
-                return new IndexingScrubMissing(common, OnlineIndexer.IndexingPolicy.DEFAULT, scrubbingPolicy);
+                return new IndexingScrubMissing(common, OnlineIndexer.IndexingPolicy.DEFAULT, scrubbingPolicy, count);
 
             default:
                 throw new MetaDataException("bad type");
@@ -96,9 +96,9 @@ public class OnlineIndexScrubber implements AutoCloseable {
 
     @VisibleForTesting
     @Nonnull
-    CompletableFuture<Void> scrubIndexAsync(ScrubbingType type) {
+    CompletableFuture<Void> scrubIndexAsync(ScrubbingType type, AtomicLong count) {
         return AsyncUtil.composeHandle(
-                getScrubber(type).buildIndexAsync(false),
+                getScrubber(type, count).buildIndexAsync(false),
                 (ignore, ex) -> {
                     if (ex != null) {
                         throw FDBExceptions.wrapException(ex);
@@ -110,17 +110,23 @@ public class OnlineIndexScrubber implements AutoCloseable {
     /**
      * Scrub the index, find and repair dangling entries.
      * Synchronous version of {@link #scrubIndexAsync}.
+     * @return found dangling index entries count.
      */
-    public void scrubDanglingIndexEntries() {
-        runner.asyncToSync(FDBStoreTimer.Waits.WAIT_ONLINE_BUILD_INDEX, scrubIndexAsync(ScrubbingType.DANGLING));
+    public long scrubDanglingIndexEntries() {
+        final AtomicLong danglingCount = new AtomicLong(0);
+        runner.asyncToSync(FDBStoreTimer.Waits.WAIT_ONLINE_BUILD_INDEX, scrubIndexAsync(ScrubbingType.DANGLING, danglingCount));
+        return danglingCount.get();
     }
 
     /**
      * Scrub the index, find and repair missing entries.
      * Synchronous version of {@link #scrubIndexAsync}.
+     * @return found missing index entries count.
      */
-    public void scrubMissingIndexEntries() {
-        runner.asyncToSync(FDBStoreTimer.Waits.WAIT_ONLINE_BUILD_INDEX, scrubIndexAsync(ScrubbingType.MISSING));
+    public long scrubMissingIndexEntries() {
+        final AtomicLong missingCount = new AtomicLong(0);
+        runner.asyncToSync(FDBStoreTimer.Waits.WAIT_ONLINE_BUILD_INDEX, scrubIndexAsync(ScrubbingType.MISSING, missingCount));
+        return missingCount.get();
     }
 
     @Nonnull
@@ -132,21 +138,27 @@ public class OnlineIndexScrubber implements AutoCloseable {
      * A builder for the scrubbing policy.
      */
     public static class ScrubbingPolicy {
-        public static final ScrubbingPolicy DEFAULT = new ScrubbingPolicy(1000, true, 0);
+        public static final ScrubbingPolicy DEFAULT = new ScrubbingPolicy(1000, true, 0, false);
         private final int logWarningsLimit;
         private final boolean allowRepair;
         private final long entriesScanLimit;
+        private final boolean ignoreIndexTypeCheck;
 
-        public ScrubbingPolicy(int logWarningsLimit,
-                               boolean allowRepair, long entriesScanLimit) {
+        public ScrubbingPolicy(int logWarningsLimit, boolean allowRepair, long entriesScanLimit,
+                               boolean ignoreIndexTypeCheck) {
 
             this.logWarningsLimit = logWarningsLimit;
             this.allowRepair = allowRepair;
             this.entriesScanLimit = entriesScanLimit;
+            this.ignoreIndexTypeCheck = ignoreIndexTypeCheck;
         }
 
         boolean allowRepair() {
             return allowRepair;
+        }
+
+        boolean ignoreIndexTypeCheck() {
+            return ignoreIndexTypeCheck;
         }
 
         long getEntriesScanLimit() {
@@ -179,6 +191,7 @@ public class OnlineIndexScrubber implements AutoCloseable {
             int logWarningsLimit = 1000;
             boolean allowRepair = true;
             long entriesScanLimit = 0;
+            boolean ignoreIndexTypeCheck = false;
 
             protected Builder() {
             }
@@ -222,8 +235,22 @@ public class OnlineIndexScrubber implements AutoCloseable {
                 return this;
             }
 
+            /**
+             * Declare that the index to be scrubbed is valid for scrubbing, regardless of its type's name.
+             *
+             * Typically, this function is called to allow scrubbing of an index with a user-defined index type. If called,
+             * it is the caller's responsibility to verify that the scrubbed index matches the required criteria, which are:
+             * 1. For the dangling scrubber job, every index entry needs to contain the primary key of the record that
+             *    generated it so that we can detect if that record is present.
+             * 2. For the missing entry scrubber, the index key for the record needs to be present in the index.
+             */
+            public Builder ignoreIndexTypeCheck() {
+                ignoreIndexTypeCheck = true;
+                return this;
+            }
+
             public ScrubbingPolicy build() {
-                return new ScrubbingPolicy(logWarningsLimit, allowRepair, entriesScanLimit);
+                return new ScrubbingPolicy(logWarningsLimit, allowRepair, entriesScanLimit, ignoreIndexTypeCheck);
             }
         }
     }
@@ -265,7 +292,6 @@ public class OnlineIndexScrubber implements AutoCloseable {
         // Maybe the performance impact of this is low enough to be always enabled?
         private boolean trackProgress = true;
         private int increaseLimitAfter = OnlineIndexer.DO_NOT_RE_INCREASE_LIMIT;
-        protected boolean syntheticIndex = false;
         private long leaseLengthMillis = OnlineIndexer.DEFAULT_LEASE_LENGTH_MILLIS;
 
         protected Builder() {
@@ -874,7 +900,8 @@ public class OnlineIndexScrubber implements AutoCloseable {
          */
         public OnlineIndexScrubber build() {
             validate();
-            OnlineIndexer.Config conf = new OnlineIndexer.Config(limit, maxRetries, recordsPerSecond, progressLogIntervalMillis, increaseLimitAfter, maxWriteLimitBytes);
+            OnlineIndexer.Config conf = new OnlineIndexer.Config(limit, maxRetries, recordsPerSecond,
+                    progressLogIntervalMillis, increaseLimitAfter, maxWriteLimitBytes, OnlineIndexer.Config.UNLIMITED_TIME);
             if (scrubbingPolicyBuilder != null) {
                 scrubbingPolicy = scrubbingPolicyBuilder.build();
             }
@@ -882,7 +909,7 @@ public class OnlineIndexScrubber implements AutoCloseable {
                 scrubbingPolicy = ScrubbingPolicy.DEFAULT;
             }
             return new OnlineIndexScrubber(runner, recordStoreBuilder, index, recordTypes,
-                    configLoader, conf, syntheticIndex,
+                    configLoader, conf,
                     leaseLengthMillis, trackProgress,
                     scrubbingPolicy);
         }
@@ -912,7 +939,6 @@ public class OnlineIndexScrubber implements AutoCloseable {
                 }
             }
             if (recordTypes.stream().anyMatch(RecordType::isSynthetic)) {
-                syntheticIndex = true;
                 // The (stored) types to scan, not the (synthetic) types that are indexed.
                 recordTypes = new SyntheticRecordPlanner(metaData, new RecordStoreState(null, null))
                         .storedRecordTypesForIndex(index, recordTypes);

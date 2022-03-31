@@ -21,13 +21,13 @@
 package com.apple.foundationdb.record.query.plan.temp.expressions;
 
 import com.apple.foundationdb.annotation.API;
+import com.apple.foundationdb.record.query.combinatorics.CrossProduct;
+import com.apple.foundationdb.record.query.combinatorics.EnumeratingIterable;
 import com.apple.foundationdb.record.query.expressions.Comparisons;
 import com.apple.foundationdb.record.query.plan.temp.AliasMap;
 import com.apple.foundationdb.record.query.plan.temp.ComparisonRange;
 import com.apple.foundationdb.record.query.plan.temp.Compensation;
 import com.apple.foundationdb.record.query.plan.temp.CorrelationIdentifier;
-import com.apple.foundationdb.record.query.plan.temp.CrossProduct;
-import com.apple.foundationdb.record.query.plan.temp.EnumeratingIterable;
 import com.apple.foundationdb.record.query.plan.temp.IdentityBiMap;
 import com.apple.foundationdb.record.query.plan.temp.IterableHelpers;
 import com.apple.foundationdb.record.query.plan.temp.MatchInfo;
@@ -40,6 +40,7 @@ import com.apple.foundationdb.record.query.plan.temp.RelationalExpressionWithPre
 import com.apple.foundationdb.record.query.plan.temp.explain.InternalPlannerGraphRewritable;
 import com.apple.foundationdb.record.query.plan.temp.explain.PlannerGraph;
 import com.apple.foundationdb.record.query.predicates.AndPredicate;
+import com.apple.foundationdb.record.query.predicates.ExistsPredicate;
 import com.apple.foundationdb.record.query.predicates.PredicateWithValue;
 import com.apple.foundationdb.record.query.predicates.QueryPredicate;
 import com.apple.foundationdb.record.query.predicates.Value;
@@ -49,19 +50,17 @@ import com.apple.foundationdb.record.query.predicates.ValueComparisonRangePredic
 import com.apple.foundationdb.record.query.predicates.ValuePredicate;
 import com.google.common.base.Equivalence;
 import com.google.common.base.Verify;
-import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
+import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -177,7 +176,7 @@ public class SelectExpression implements RelationalExpressionWithChildren, Relat
 
     @Override
     public int hashCodeWithoutChildren() {
-        return Objects.hash(getPredicates());
+        return Objects.hash(getPredicates(), getResultValues());
     }
 
     @Nonnull
@@ -233,6 +232,12 @@ public class SelectExpression implements RelationalExpressionWithChildren, Relat
 
         final ImmutableSet<CorrelationIdentifier> matchedCorrelatedTo = matchedCorrelatedToBuilder.build();
 
+        if (getQuantifiers()
+                .stream()
+                .anyMatch(quantifier -> quantifier instanceof Quantifier.ForEach && !partialMatchMap.containsKeyUnwrapped(quantifier))) {
+            return ImmutableList.of();
+        }
+
         final boolean allNonMatchedQuantifiersIndependent =
                 getQuantifiers()
                         .stream()
@@ -259,25 +264,20 @@ public class SelectExpression implements RelationalExpressionWithChildren, Relat
             return ImmutableList.of();
         }
 
-        // Build a multimap that allows us to quickly relate a source alias (on the query side) with
-        // predicates on the candidate side that are correlated to the mapped alias. This structure is only needed
-        // for efficiency.
-        // TODO make this map work for join predicates
-        final ImmutableListMultimap.Builder<CorrelationIdentifier, QueryPredicate> aliasToOtherPredicatesMapBuilder =
-                ImmutableListMultimap.builder();
-        for (final QueryPredicate otherPredicate : otherSelectExpression.getPredicates()) {
-            final Set<CorrelationIdentifier> otherCorrelatedTo = otherPredicate.getCorrelatedTo();
-            // we currently can only match local (non join) predicates
-            if (otherCorrelatedTo.size() == 1) {
-                @Nullable final CorrelationIdentifier sourceAlias =
-                        aliasMap.getSource(Iterables.getOnlyElement(otherCorrelatedTo));
-                if (sourceAlias != null) {
-                    aliasToOtherPredicatesMapBuilder.put(sourceAlias, otherPredicate);
-                }
-            }
+        //
+        // Go through all matched existential quantifiers. Make sure that there is a top level exists() predicate
+        // corresponding to  each  one.
+        //
+        if (getQuantifiers()
+                .stream()
+                .filter(quantifier -> quantifier instanceof Quantifier.Existential && aliasMap.containsSource(quantifier.getAlias()))
+                .anyMatch(quantifier -> getPredicates()
+                        .stream()
+                        .noneMatch(predicate -> predicate instanceof ExistsPredicate &&
+                                                ((ExistsPredicate)predicate).getExistentialAlias().equals(quantifier.getAlias()))
+                )) {
+            return ImmutableList.of();
         }
-        final ImmutableListMultimap<CorrelationIdentifier, QueryPredicate> aliasToOtherPredicatesMap =
-                aliasToOtherPredicatesMapBuilder.build();
 
         //
         // Map predicates on the query side to predicates on the candidate side. Record parameter bindings and/or
@@ -310,18 +310,9 @@ public class SelectExpression implements RelationalExpressionWithChildren, Relat
         }
 
         for (final QueryPredicate predicate : getPredicates()) {
-            final Set<CorrelationIdentifier> correlatedTo =
-                    predicate.getCorrelatedTo();
-
-            // TODO join predicates
-            if (correlatedTo.size() == 1) {
-                final CorrelationIdentifier correlatedToAlias = Iterables.getOnlyElement(correlatedTo);
-                final ImmutableList<QueryPredicate> candidatePredicates = aliasToOtherPredicatesMap.get(correlatedToAlias);
-                final Set<PredicateMapping> impliedMappingsForPredicate =
-                        predicate.findImpliedMappings(aliasMap, candidatePredicates);
-
-                predicateMappingsBuilder.add(impliedMappingsForPredicate);
-            }
+            final Set<PredicateMapping> impliedMappingsForPredicate =
+                    predicate.findImpliedMappings(aliasMap, otherSelectExpression.getPredicates());
+            predicateMappingsBuilder.add(impliedMappingsForPredicate);
         }
 
         //
@@ -385,8 +376,8 @@ public class SelectExpression implements RelationalExpressionWithChildren, Relat
     public PlannerGraph rewriteInternalPlannerGraph(@Nonnull final List<? extends PlannerGraph> childGraphs) {
         return PlannerGraph.fromNodeAndChildGraphs(
                 new PlannerGraph.LogicalOperatorNode(this,
-                        "Select",
-                        ImmutableList.of("SELECT " + resultValues.stream().map(Object::toString).collect(Collectors.joining(", ")) +  " WHERE " + AndPredicate.and(getPredicates())),
+                        "SELECT " + resultValues.stream().map(Object::toString).collect(Collectors.joining(", ")),
+                        getPredicates().isEmpty() ? ImmutableList.of() : ImmutableList.of("WHERE " + AndPredicate.and(getPredicates())),
                         ImmutableMap.of()),
                 childGraphs);
     }
@@ -423,11 +414,11 @@ public class SelectExpression implements RelationalExpressionWithChildren, Relat
 
         final BoundEquivalence boundEquivalence = new BoundEquivalence(boundIdentitiesMap);
 
-        final HashMultimap<Equivalence.Wrapper<Value>, PredicateWithValue> partitionedPredicatesWithValues =
+        final Multimap<Equivalence.Wrapper<Value>, PredicateWithValue> partitionedPredicatesWithValues =
                 predicateWithValues
                         .stream()
                         .collect(Multimaps.toMultimap(
-                                predicate -> boundEquivalence.wrap(predicate.getValue()), Function.identity(), HashMultimap::create));
+                                predicate -> boundEquivalence.wrap(predicate.getValue()), Function.identity(), LinkedHashMultimap::create));
 
         partitionedPredicatesWithValues
                 .asMap()
@@ -508,7 +499,7 @@ public class SelectExpression implements RelationalExpressionWithChildren, Relat
                 .reduce(Compensation.noCompensation(), Compensation::union);
 
         //
-        // The fact that we matched the partial match handed must mean that the child compensation is not impossible.
+        // The fact that we matched the partial match handed in must mean that the child compensation is not impossible.
         //
         Verify.verify(!childCompensation.isImpossible());
 
@@ -534,6 +525,7 @@ public class SelectExpression implements RelationalExpressionWithChildren, Relat
 
         return Compensation.ofChildCompensationAndPredicateMap(childCompensation,
                 toBeReappliedPredicatesMap,
+                computeMappedQuantifiers(partialMatch),
                 computeUnmatchedForEachQuantifiers(partialMatch));
     }
 }

@@ -23,16 +23,13 @@ package com.apple.foundationdb.record.query.plan.temp.rules;
 import com.apple.foundationdb.annotation.API;
 import com.apple.foundationdb.record.query.plan.plans.RecordQueryFetchFromPartialRecordPlan;
 import com.apple.foundationdb.record.query.plan.plans.RecordQueryPlan;
-import com.apple.foundationdb.record.query.plan.temp.CorrelationIdentifier;
 import com.apple.foundationdb.record.query.plan.temp.PlannerRule;
 import com.apple.foundationdb.record.query.plan.temp.PlannerRuleCall;
 import com.apple.foundationdb.record.query.plan.temp.Quantifier;
 import com.apple.foundationdb.record.query.plan.temp.expressions.LogicalProjectionExpression;
 import com.apple.foundationdb.record.query.plan.temp.matchers.BindingMatcher;
-import com.apple.foundationdb.record.query.predicates.Value;
 
 import javax.annotation.Nonnull;
-import java.util.List;
 
 import static com.apple.foundationdb.record.query.plan.temp.matchers.ListMatcher.exactly;
 import static com.apple.foundationdb.record.query.plan.temp.matchers.QuantifierMatchers.forEachQuantifier;
@@ -58,25 +55,7 @@ public class RemoveProjectionRule extends PlannerRule<LogicalProjectionExpressio
 
     @Override
     public void onMatch(@Nonnull PlannerRuleCall call) {
-        final LogicalProjectionExpression projectionExpression = call.get(root);
-
         final RecordQueryPlan innerPlan = call.get(innerPlanMatcher);
-
-        if (innerPlan instanceof RecordQueryFetchFromPartialRecordPlan) {
-            // if the fetch is able to push all values we can eliminate the fetch as well
-            final RecordQueryFetchFromPartialRecordPlan fetchPlan = (RecordQueryFetchFromPartialRecordPlan)innerPlan;
-            final CorrelationIdentifier newInnerAlias = CorrelationIdentifier.uniqueID();
-            final List<? extends Value> resultValues = projectionExpression.getResultValues();
-            final boolean allPushable = resultValues
-                    .stream()
-                    .allMatch(value -> fetchPlan.pushValue(value, newInnerAlias).isPresent());
-            if (allPushable) {
-                // all fields in the projection are already available underneath the fetch
-                // we don't need the projection nor the fetch
-                call.yield(call.ref(fetchPlan.getChild()));
-            }
-        }
-
         // just remove the projection
         call.yield(call.ref(innerPlan));
     }

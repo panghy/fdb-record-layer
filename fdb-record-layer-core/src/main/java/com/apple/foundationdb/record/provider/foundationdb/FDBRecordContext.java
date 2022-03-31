@@ -36,6 +36,7 @@ import com.apple.foundationdb.record.RecordCoreStorageException;
 import com.apple.foundationdb.record.logging.KeyValueLogMessage;
 import com.apple.foundationdb.record.logging.LogMessageKeys;
 import com.apple.foundationdb.record.provider.common.StoreTimer;
+import com.apple.foundationdb.record.provider.foundationdb.properties.RecordLayerPropertyStorage;
 import com.apple.foundationdb.record.util.MapUtils;
 import com.apple.foundationdb.system.SystemKeyspace;
 import com.apple.foundationdb.tuple.ByteArrayUtil;
@@ -67,6 +68,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -158,7 +160,9 @@ public class FDBRecordContext extends FDBTransactionContext implements AutoClose
     private boolean dirtyMetaDataVersionStamp;
     private long trackOpenTimeNanos;
     @Nonnull
-    private final Map<String, Object> session = new LinkedHashMap<>();
+    private final Map<Object, Object> session = new LinkedHashMap<>();
+    @Nonnull
+    private final RecordLayerPropertyStorage propertyStorage;
 
     protected FDBRecordContext(@Nonnull FDBDatabase fdb,
                                @Nonnull Transaction transaction,
@@ -211,6 +215,7 @@ public class FDBRecordContext extends FDBTransactionContext implements AutoClose
         }
 
         this.dirtyStoreState = false;
+        this.propertyStorage = config.getPropertyStorage();
     }
 
     @Nullable
@@ -661,6 +666,30 @@ public class FDBRecordContext extends FDBTransactionContext implements AutoClose
          */
         @Nonnull
         CompletableFuture<Void> checkAsync();
+
+        /**
+         * Create a commit check based on the given future. This will create a {@link CommitCheckAsync} that will
+         * be ready when the given future is ready. Note that as the future has already been created, this means
+         * that work for the commit check may begin prior to the pre-commit hooks being executed during
+         * {@link FDBRecordContext#commit()}.
+         *
+         * @param check the future to base the commit check on
+         * @return a commit check wrapping the given future
+         */
+        static CommitCheckAsync fromFuture(@Nonnull CompletableFuture<Void> check) {
+            return new CommitCheckAsync() {
+                @Override
+                public boolean isReady() {
+                    return check.isDone();
+                }
+
+                @Nonnull
+                @Override
+                public CompletableFuture<Void> checkAsync() {
+                    return check;
+                }
+            };
+        }
     }
 
     /**
@@ -691,6 +720,20 @@ public class FDBRecordContext extends FDBTransactionContext implements AutoClose
     }
 
     /**
+     * Get all commit checks that have been added to the transaction that conform to the given predicate.
+     * This method is {@linkplain API.Status#INTERNAL internal}.
+     *
+     * @param filter predicate to apply to all commit checks that have been added to the transaction
+     * @return all commit checks that pass the given filter
+     */
+    @API(API.Status.INTERNAL)
+    public synchronized List<CommitCheckAsync> getCommitChecks(@Nonnull Predicate<CommitCheckAsync> filter) {
+        return commitChecks.values().stream()
+                .filter(filter)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Add a check to be completed before {@link #commit} finishes.
      *
      * {@link #commit} will wait for the future to be completed (exceptionally if the check fails)
@@ -699,18 +742,7 @@ public class FDBRecordContext extends FDBTransactionContext implements AutoClose
      * @param check the check to be performed
      */
     public synchronized void addCommitCheck(@Nonnull CompletableFuture<Void> check) {
-        addCommitCheck(new CommitCheckAsync() {
-            @Override
-            public boolean isReady() {
-                return check.isDone();
-            }
-
-            @Nonnull
-            @Override
-            public CompletableFuture<Void> checkAsync() {
-                return check;
-            }
-        });
+        addCommitCheck(CommitCheckAsync.fromFuture(check));
     }
 
     /**
@@ -1330,7 +1362,7 @@ public class FDBRecordContext extends FDBTransactionContext implements AutoClose
      */
     @SuppressWarnings("unchecked")
     @API(API.Status.EXPERIMENTAL)
-    public synchronized <T> T getInSession(@Nonnull String key, @Nonnull Class<T> clazz) {
+    public synchronized <T> T getInSession(@Nonnull Object key, @Nonnull Class<T> clazz) {
         return (T) session.get(key);
     }
 
@@ -1342,7 +1374,7 @@ public class FDBRecordContext extends FDBTransactionContext implements AutoClose
      * @param value value
      */
     @API(API.Status.EXPERIMENTAL)
-    public synchronized <T extends Object> void putInSessionIfAbsent(@Nonnull String key, @Nonnull T value) {
+    public synchronized <T extends Object> void putInSessionIfAbsent(@Nonnull Object key, @Nonnull T value) {
         session.put(key, value);
     }
 
@@ -1358,6 +1390,16 @@ public class FDBRecordContext extends FDBTransactionContext implements AutoClose
     @API(API.Status.EXPERIMENTAL)
     public synchronized <T> T removeFromSession(@Nonnull String key, @Nonnull Class<T> clazz) {
         return (T) session.remove(key);
+    }
+
+    /**
+     * Get the properties configured by adopter for this FDBRecordContext.
+     *
+     * @return the wrapper of a mapping of the properties
+     */
+    @API(API.Status.EXPERIMENTAL)
+    public RecordLayerPropertyStorage getPropertyStorage() {
+        return propertyStorage;
     }
 
 }

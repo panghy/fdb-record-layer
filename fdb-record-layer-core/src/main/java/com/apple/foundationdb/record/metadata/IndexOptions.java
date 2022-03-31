@@ -108,6 +108,14 @@ public class IndexOptions {
      */
     public static final String TEXT_TOKENIZER_VERSION_OPTION = "textTokenizerVersion";
     /**
+     * The minimum size of ngram tokenizer, when using ngram analyzer.
+     */
+    public static final String TEXT_TOKEN_MIN_SIZE = "textTokenMinSize";
+    /**
+     * The maximum size of ngram tokenizer, when using ngram analyzer.
+     */
+    public static final String TEXT_TOKEN_MAX_SIZE = "textTokenMaxSize";
+    /**
      * If {@code "true"}, a {@link IndexTypes#TEXT} index will add a conflict range for the whole index to keep the commit size down at the expense of more conflicts.
      */
     @API(API.Status.EXPERIMENTAL)

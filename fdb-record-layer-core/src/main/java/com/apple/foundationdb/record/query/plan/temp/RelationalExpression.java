@@ -23,6 +23,7 @@ package com.apple.foundationdb.record.query.plan.temp;
 import com.apple.foundationdb.annotation.API;
 import com.apple.foundationdb.record.RecordCoreException;
 import com.apple.foundationdb.record.query.RecordQuery;
+import com.apple.foundationdb.record.query.combinatorics.EnumeratingIterable;
 import com.apple.foundationdb.record.query.plan.temp.explain.PlannerGraphProperty;
 import com.apple.foundationdb.record.query.plan.temp.expressions.FullUnorderedScanExpression;
 import com.apple.foundationdb.record.query.plan.temp.expressions.LogicalDistinctExpression;
@@ -101,22 +102,29 @@ public interface RelationalExpression extends Correlated<RelationalExpression> {
                                                 @Nonnull RecordQuery query) {
         query.validate(context.getMetaData());
 
-        Quantifier.ForEach quantifier = Quantifier.forEach(GroupExpressionRef.of(new FullUnorderedScanExpression(context.getMetaData().getRecordTypes().keySet())));
-
-        if (!context.getRecordTypes().isEmpty()) {
-            quantifier = Quantifier.forEach(GroupExpressionRef.of(new LogicalTypeFilterExpression(new HashSet<>(context.getRecordTypes()), quantifier)));
+        final GroupExpressionRef<? extends RelationalExpression> baseRef;
+        Quantifier.ForEach quantifier;
+        if (context.getRecordTypes().isEmpty()) {
+            baseRef = GroupExpressionRef.of(new FullUnorderedScanExpression(context.getMetaData().getRecordTypes().keySet()));
+            quantifier = Quantifier.forEach(baseRef);
+        } else {
+            final var fuseRef = GroupExpressionRef.of(new FullUnorderedScanExpression(context.getMetaData().getRecordTypes().keySet()));
+            baseRef = GroupExpressionRef.of(new LogicalTypeFilterExpression(new HashSet<>(context.getRecordTypes()), Quantifier.forEach(fuseRef)));
+            quantifier = Quantifier.forEach(baseRef);
         }
 
         final SelectExpression selectExpression;
         if (query.getFilter() != null) {
             selectExpression =
                     query.getFilter()
-                            .expand(quantifier.getAlias())
-                            .buildSelectWithBase(quantifier);
+                            .expand(quantifier.getAlias(), () -> Quantifier.forEach(baseRef))
+                            .withBase(quantifier)
+                            .buildSelect();
         } else {
             selectExpression =
                     GraphExpansion.empty()
-                            .buildSelectWithBase(quantifier);
+                            .withBase(quantifier)
+                            .buildSelect();
         }
         quantifier = Quantifier.forEach(GroupExpressionRef.of(selectExpression));
 
@@ -281,6 +289,19 @@ public interface RelationalExpression extends Correlated<RelationalExpression> {
                         }));
 
         return !Iterables.isEmpty(boundMatchIterable);
+    }
+
+    @Nonnull
+    default <E extends RelationalExpression> E narrow(@Nonnull Class<E> narrowedClass) {
+        return narrowedClass.cast(this);
+    }
+
+    @Nonnull
+    default <E extends RelationalExpression> Optional<E> narrowMaybe(@Nonnull Class<E> narrowedClass) {
+        if (narrowedClass.isInstance(this)) {
+            return Optional.of(narrowedClass.cast(this));
+        }
+        return Optional.empty();
     }
 
     /**
@@ -568,10 +589,11 @@ public interface RelationalExpression extends Correlated<RelationalExpression> {
         final Set<CorrelationIdentifier> otherCorrelatedTo = otherExpression.getCorrelatedTo();
 
         final AliasMap identitiesMap = bindIdentities(otherExpression, boundAliasMap);
-        final Set<CorrelationIdentifier> unboundCorrelatedTo = Sets.difference(correlatedTo, identitiesMap.sources());
-        final Set<CorrelationIdentifier> unboundOtherCorrelatedTo = Sets.difference(otherCorrelatedTo, identitiesMap.targets());
 
         final AliasMap aliasMapWithIdentities = boundAliasMap.combine(identitiesMap);
+        final Set<CorrelationIdentifier> unboundCorrelatedTo = Sets.difference(correlatedTo, aliasMapWithIdentities.sources());
+        final Set<CorrelationIdentifier> unboundOtherCorrelatedTo = Sets.difference(otherCorrelatedTo, aliasMapWithIdentities.targets());
+
         return aliasMapWithIdentities
                 .findMatches(
                         unboundCorrelatedTo,

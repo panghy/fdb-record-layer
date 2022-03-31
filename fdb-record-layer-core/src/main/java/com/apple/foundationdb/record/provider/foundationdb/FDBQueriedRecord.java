@@ -24,7 +24,6 @@ import com.apple.foundationdb.annotation.API;
 import com.apple.foundationdb.record.IndexEntry;
 import com.apple.foundationdb.record.metadata.Index;
 import com.apple.foundationdb.record.metadata.RecordType;
-import com.apple.foundationdb.record.query.plan.plans.QueryResultElement;
 import com.apple.foundationdb.tuple.Tuple;
 import com.google.protobuf.Message;
 
@@ -36,7 +35,7 @@ import javax.annotation.Nullable;
  * @param <M> type used to represent stored records
  */
 @API(API.Status.MAINTAINED)
-public abstract class FDBQueriedRecord<M extends Message> implements FDBRecord<M>, QueryResultElement {
+public abstract class FDBQueriedRecord<M extends Message> implements FDBRecord<M> {
     /**
      * Get the stored record, if any, that produced this query result record.
      * <code>null</code> if this query result record was assembled without loading the whole record,
@@ -70,8 +69,8 @@ public abstract class FDBQueriedRecord<M extends Message> implements FDBRecord<M
         return new Stored<>(stored);
     }
 
-    public static <M extends Message> FDBQueriedRecord<M> covered(@Nonnull Index index, @Nonnull IndexEntry indexEntry, @Nonnull Tuple primaryKey, @Nonnull RecordType recordType, @Nonnull M record) {
-        return new Covered<>(index, indexEntry, primaryKey, recordType, record);
+    public static <M extends Message> FDBQueriedRecord<M> covered(@Nonnull Index index, @Nonnull IndexEntry indexEntry, @Nonnull Tuple primaryKey, @Nonnull RecordType recordType, @Nonnull M protoRecord) {
+        return new Covered<>(index, indexEntry, primaryKey, recordType, protoRecord);
     }
 
     @SuppressWarnings("PMD.AvoidFieldNameMatchingTypeName")
@@ -196,14 +195,14 @@ public abstract class FDBQueriedRecord<M extends Message> implements FDBRecord<M
         @Nonnull
         private final RecordType recordType;
         @Nonnull
-        private final M record;
+        private final M protoRecord;
 
-        public Covered(@Nonnull Index index, @Nonnull IndexEntry indexEntry, @Nonnull Tuple primaryKey, @Nonnull RecordType recordType, @Nonnull M record) {
+        public Covered(@Nonnull Index index, @Nonnull IndexEntry indexEntry, @Nonnull Tuple primaryKey, @Nonnull RecordType recordType, @Nonnull M protoRecord) {
             this.index = index;
             this.indexEntry = indexEntry;
             this.primaryKey = primaryKey;
             this.recordType = recordType;
-            this.record = record;
+            this.protoRecord = protoRecord;
         }
 
         @Nullable
@@ -233,7 +232,7 @@ public abstract class FDBQueriedRecord<M extends Message> implements FDBRecord<M
         @Nonnull
         @Override
         public M getRecord() {
-            return record;
+            return protoRecord;
         }
 
         @Override

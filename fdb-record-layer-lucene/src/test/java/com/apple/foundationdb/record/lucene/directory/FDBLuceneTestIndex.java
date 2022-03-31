@@ -20,6 +20,7 @@
 
 package com.apple.foundationdb.record.lucene.directory;
 
+import com.apple.foundationdb.record.lucene.codec.LuceneOptimizedCodec;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -65,6 +66,7 @@ public class FDBLuceneTestIndex {
      */
     public void indexDocument(String title, String body) throws IOException {
         IndexWriterConfig indexWriterConfig = new IndexWriterConfig(analyzer);
+        indexWriterConfig.setCodec(new LuceneOptimizedCodec());
         try (IndexWriter writer = new IndexWriter(directory, indexWriterConfig)) {
             Document document = new Document();
             document.add(new TextField("title", title, Field.Store.YES));

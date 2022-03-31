@@ -20,11 +20,12 @@
 
 package com.apple.foundationdb.record.query.plan.temp.matching;
 
+import com.apple.foundationdb.record.query.combinatorics.TransitiveClosure;
 import com.apple.foundationdb.record.query.plan.temp.AliasMap;
 import com.apple.foundationdb.record.query.plan.temp.CorrelationIdentifier;
-import com.apple.foundationdb.record.query.plan.temp.CrossProduct;
-import com.apple.foundationdb.record.query.plan.temp.EnumeratingIterable;
-import com.apple.foundationdb.record.query.plan.temp.EnumeratingIterator;
+import com.apple.foundationdb.record.query.combinatorics.CrossProduct;
+import com.apple.foundationdb.record.query.combinatorics.EnumeratingIterable;
+import com.apple.foundationdb.record.query.combinatorics.EnumeratingIterator;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -239,8 +240,8 @@ public class ComputingMatcher<T, M, R> extends BaseMatcher<T> implements Generic
         final ImmutableSet<CorrelationIdentifier> otherAliases = BaseMatcher.computeAliases(otherElements, otherElementToAliasFn);
         final ImmutableMap<CorrelationIdentifier, T> otherAliasToElementMap = BaseMatcher.computeAliasToElementMap(otherElements, otherElementToAliasFn);
 
-        ImmutableSetMultimap<CorrelationIdentifier, CorrelationIdentifier> dependsOnMap = BaseMatcher.computeDependsOnMapWithAliases(aliases, aliasToElementMap, dependsOnFn);
-        final ImmutableSetMultimap<CorrelationIdentifier, CorrelationIdentifier> otherDependsOnMap = BaseMatcher.computeDependsOnMapWithAliases(otherAliases, otherAliasToElementMap, otherDependsOnFn);
+        ImmutableSetMultimap<CorrelationIdentifier, CorrelationIdentifier> dependsOnMap = TransitiveClosure.transitiveClosure(aliases, BaseMatcher.computeDependsOnMapWithAliases(aliases, aliasToElementMap, dependsOnFn));
+        final ImmutableSetMultimap<CorrelationIdentifier, CorrelationIdentifier> otherDependsOnMap = TransitiveClosure.transitiveClosure(otherAliases, BaseMatcher.computeDependsOnMapWithAliases(otherAliases, otherAliasToElementMap, otherDependsOnFn));
 
         return new ComputingMatcher<>(
                 boundAliasesMap,

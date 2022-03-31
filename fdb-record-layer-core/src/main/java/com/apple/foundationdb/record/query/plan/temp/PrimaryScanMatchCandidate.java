@@ -20,6 +20,7 @@
 
 package com.apple.foundationdb.record.query.plan.temp;
 
+import com.apple.foundationdb.record.RecordCoreException;
 import com.apple.foundationdb.record.metadata.expressions.KeyExpression;
 import com.apple.foundationdb.record.query.plan.temp.expressions.LogicalTypeFilterExpression;
 import com.apple.foundationdb.record.query.plan.temp.expressions.PrimaryScanExpression;
@@ -33,7 +34,7 @@ import java.util.Set;
 /**
  * Case class to represent a match candidate that is backed by an index.
  */
-public class PrimaryScanMatchCandidate implements MatchCandidate {
+public class PrimaryScanMatchCandidate implements MatchCandidate, ValueIndexLikeMatchCandidate {
     /**
      * Holds the parameter names for all necessary parameters that need to be bound during matching.
      */
@@ -87,8 +88,14 @@ public class PrimaryScanMatchCandidate implements MatchCandidate {
 
     @Nonnull
     @Override
-    public List<CorrelationIdentifier> getParameters() {
+    public List<CorrelationIdentifier> getSargableAliases() {
         return parameters;
+    }
+
+    @Nonnull
+    @Override
+    public List<CorrelationIdentifier> getOrderingAliases() {
+        return getSargableAliases();
     }
 
     @Nonnull
@@ -110,11 +117,15 @@ public class PrimaryScanMatchCandidate implements MatchCandidate {
     @Nonnull
     @Override
     public RelationalExpression toEquivalentExpression(@Nonnull PartialMatch partialMatch,
-                                                       @Nonnull final List<ComparisonRange> comparisonRanges,
-                                                       final boolean isReverse) {
+                                                       @Nonnull final List<ComparisonRange> comparisonRanges) {
+        final var reverseScanOrder =
+                partialMatch.getMatchInfo()
+                        .deriveReverseScanOrder()
+                        .orElseThrow(() -> new RecordCoreException("match info should unambiguously indicate reversed-ness of can"));
+
         return new LogicalTypeFilterExpression(getQueriedRecordTypes(),
                 new PrimaryScanExpression(getAvailableRecordTypes(),
                         comparisonRanges,
-                        isReverse));
+                        reverseScanOrder));
     }
 }

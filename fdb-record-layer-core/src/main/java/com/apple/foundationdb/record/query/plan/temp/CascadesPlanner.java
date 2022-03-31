@@ -28,6 +28,7 @@ import com.apple.foundationdb.record.RecordStoreState;
 import com.apple.foundationdb.record.logging.KeyValueLogMessage;
 import com.apple.foundationdb.record.query.ParameterRelationshipGraph;
 import com.apple.foundationdb.record.query.RecordQuery;
+import com.apple.foundationdb.record.query.plan.QueryPlanInfo;
 import com.apple.foundationdb.record.query.plan.QueryPlanInfoKeys;
 import com.apple.foundationdb.record.query.plan.QueryPlanResult;
 import com.apple.foundationdb.record.query.plan.QueryPlanner;
@@ -42,6 +43,7 @@ import com.apple.foundationdb.record.query.plan.temp.debug.RestartException;
 import com.apple.foundationdb.record.query.plan.temp.explain.PlannerGraphProperty;
 import com.apple.foundationdb.record.query.plan.temp.matchers.PlannerBindings;
 import com.google.common.base.Suppliers;
+import com.google.common.base.Verify;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -206,7 +208,7 @@ public class CascadesPlanner implements QueryPlanner {
     private int maxQueueSize;
 
     public CascadesPlanner(@Nonnull RecordMetaData metaData, @Nonnull RecordStoreState recordStoreState) {
-        this(metaData, recordStoreState, PlannerRuleSet.ALL);
+        this(metaData, recordStoreState, defaultPlannerRuleSet());
     }
 
     public CascadesPlanner(@Nonnull RecordMetaData metaData, @Nonnull RecordStoreState recordStoreState, @Nonnull PlannerRuleSet ruleSet) {
@@ -222,42 +224,6 @@ public class CascadesPlanner implements QueryPlanner {
 
     @Nonnull
     @Override
-    public RecordQueryPlan plan(@Nonnull RecordQuery query, @Nonnull ParameterRelationshipGraph parameterRelationshipGraph) {
-        final PlanContext context = new MetaDataPlanContext(configuration, metaData, recordStoreState, query);
-        Debugger.query(query, context);
-        try {
-            planPartial(context,
-                    () -> RelationalExpression.fromRecordQuery(context, query));
-        } finally {
-            Debugger.withDebugger(Debugger::onDone);
-        }
-
-        final RelationalExpression singleRoot = currentRoot.getMembers().iterator().next();
-        if (singleRoot instanceof RecordQueryPlan) {
-            if (logger.isDebugEnabled()) {
-                logger.debug(KeyValueLogMessage.of("explain of plan",
-                        "explain", PlannerGraphProperty.explain(singleRoot)));
-            }
-
-            return (RecordQueryPlan)singleRoot;
-        } else {
-            throw new RecordCoreException("Cascades planner could not plan query")
-                    .addLogInfo("query", query)
-                    .addLogInfo("finalExpression", currentRoot.get());
-        }
-    }
-
-    @Nonnull
-    @Override
-    public QueryPlanResult planQuery(@Nonnull final RecordQuery query, @Nonnull ParameterRelationshipGraph parameterRelationshipGraph) {
-        QueryPlanResult result = new QueryPlanResult(plan(query, parameterRelationshipGraph));
-        result.getPlanInfo().put(QueryPlanInfoKeys.TOTAL_TASK_COUNT, taskCount);
-        result.getPlanInfo().put(QueryPlanInfoKeys.MAX_TASK_QUEUE_SIZE, maxQueueSize);
-        return result;
-    }
-
-    @Nonnull
-    @Override
     public RecordMetaData getRecordMetaData() {
         return metaData;
     }
@@ -266,54 +232,6 @@ public class CascadesPlanner implements QueryPlanner {
     @Override
     public RecordStoreState getRecordStoreState() {
         return recordStoreState;
-    }
-
-    private void planPartial(@Nonnull PlanContext context, @Nonnull Supplier<RelationalExpression> expressionSupplier) {
-        currentRoot = GroupExpressionRef.of(expressionSupplier.get());
-        aliasResolver = AliasResolver.withRoot(currentRoot);
-        Debugger.withDebugger(debugger -> PlannerGraphProperty.show(true, currentRoot));
-        taskStack = new ArrayDeque<>();
-        taskStack.push(new OptimizeGroup(context, currentRoot));
-        taskCount = 0;
-        maxQueueSize = 0;
-        while (!taskStack.isEmpty()) {
-            try {
-                Debugger.withDebugger(debugger -> debugger.onEvent(new Debugger.ExecutingTaskEvent(currentRoot, taskStack, Objects.requireNonNull(taskStack.peek()))));
-                if (isTaskTotalCountExceeded(configuration, taskCount)) {
-                    throw new RecordQueryPlanComplexityException("Maximum number of tasks (" + configuration.getMaxTotalTaskCount() + ") was exceeded");
-                }
-                taskCount++;
-
-                Task nextTask = taskStack.pop();
-                if (logger.isTraceEnabled()) {
-                    logger.trace(KeyValueLogMessage.of("executing task", "nextTask", nextTask.toString()));
-                }
-
-                Debugger.withDebugger(debugger -> debugger.onEvent(nextTask.toTaskEvent(Location.BEGIN)));
-                nextTask.execute();
-                Debugger.withDebugger(debugger -> debugger.onEvent(nextTask.toTaskEvent(Location.END)));
-
-                if (logger.isTraceEnabled()) {
-                    logger.trace(KeyValueLogMessage.of("planner state",
-                            "taskStackSize", taskStack.size(),
-                            "memo", new GroupExpressionPrinter(currentRoot)));
-                }
-
-                maxQueueSize = Math.max(maxQueueSize, taskStack.size());
-                if (isTaskQueueSizeExceeded(configuration, taskStack.size())) {
-                    throw new RecordQueryPlanComplexityException("Maximum task queue size (" + configuration.getMaxTaskQueueSize() + ") was exceeded");
-                }
-            } catch (final RestartException restartException) {
-                if (logger.isTraceEnabled()) {
-                    logger.trace(KeyValueLogMessage.of("debugger requests restart of planning",
-                            "taskStackSize", taskStack.size(),
-                            "memo", new GroupExpressionPrinter(currentRoot)));
-                }
-                taskStack.clear();
-                currentRoot = GroupExpressionRef.of(expressionSupplier.get());
-                taskStack.push(new OptimizeGroup(context, currentRoot));
-            }
-        }
     }
 
     @Override
@@ -381,6 +299,114 @@ public class CascadesPlanner implements QueryPlanner {
         return ((configuration.getMaxNumMatchesPerRuleCall() > 0) && (numMatches > configuration.getMaxNumMatchesPerRuleCall()));
     }
 
+    @Nonnull
+    @Override
+    public QueryPlanResult planQuery(@Nonnull final RecordQuery query, @Nonnull ParameterRelationshipGraph parameterRelationshipGraph) {
+        RecordQueryPlan plan = plan(query, parameterRelationshipGraph);
+        QueryPlanInfo info = QueryPlanInfo.newBuilder()
+                .put(QueryPlanInfoKeys.TOTAL_TASK_COUNT, taskCount)
+                .put(QueryPlanInfoKeys.MAX_TASK_QUEUE_SIZE, maxQueueSize)
+                .build();
+        return new QueryPlanResult(plan, info);
+    }
+
+    @Nonnull
+    @Override
+    public RecordQueryPlan plan(@Nonnull RecordQuery query, @Nonnull ParameterRelationshipGraph parameterRelationshipGraph) {
+        final PlanContext context = new MetaDataPlanContext(configuration, metaData, recordStoreState, query);
+        Debugger.query(query, context);
+        try {
+            planPartial(context,
+                    () -> RelationalExpression.fromRecordQuery(context, query));
+        } finally {
+            Debugger.withDebugger(Debugger::onDone);
+        }
+
+        final RelationalExpression singleRoot = currentRoot.getMembers().iterator().next();
+        if (singleRoot instanceof RecordQueryPlan) {
+            if (logger.isDebugEnabled()) {
+                logger.debug(KeyValueLogMessage.of("explain of plan",
+                        "explain", PlannerGraphProperty.explain(singleRoot)));
+            }
+
+            return (RecordQueryPlan)singleRoot;
+        } else {
+            throw new RecordCoreException("Cascades planner could not plan query")
+                    .addLogInfo("query", query)
+                    .addLogInfo("finalExpression", currentRoot.get());
+        }
+    }
+
+    private void planPartial(@Nonnull PlanContext context, @Nonnull Supplier<RelationalExpression> expressionSupplier) {
+        currentRoot = GroupExpressionRef.of(expressionSupplier.get());
+        aliasResolver = AliasResolver.withRoot(currentRoot);
+        Debugger.show(currentRoot);
+        taskStack = new ArrayDeque<>();
+        taskStack.push(new OptimizeGroup(context, currentRoot));
+        taskCount = 0;
+        maxQueueSize = 0;
+        while (!taskStack.isEmpty()) {
+            try {
+                Debugger.withDebugger(debugger -> debugger.onEvent(new Debugger.ExecutingTaskEvent(currentRoot, taskStack, Objects.requireNonNull(taskStack.peek()))));
+                if (isTaskTotalCountExceeded(configuration, taskCount)) {
+                    throw new RecordQueryPlanComplexityException("Maximum number of tasks (" + configuration.getMaxTotalTaskCount() + ") was exceeded");
+                }
+                taskCount++;
+
+                Task nextTask = taskStack.pop();
+                if (logger.isTraceEnabled()) {
+                    logger.trace(KeyValueLogMessage.of("executing task", "nextTask", nextTask.toString()));
+                }
+
+                Debugger.withDebugger(debugger -> debugger.onEvent(nextTask.toTaskEvent(Location.BEGIN)));
+                nextTask.execute();
+                Debugger.withDebugger(debugger -> debugger.onEvent(nextTask.toTaskEvent(Location.END)));
+
+                if (logger.isTraceEnabled()) {
+                    logger.trace(KeyValueLogMessage.of("planner state",
+                            "taskStackSize", taskStack.size(),
+                            "memo", new GroupExpressionPrinter(currentRoot)));
+                }
+
+                maxQueueSize = Math.max(maxQueueSize, taskStack.size());
+                if (isTaskQueueSizeExceeded(configuration, taskStack.size())) {
+                    throw new RecordQueryPlanComplexityException("Maximum task queue size (" + configuration.getMaxTaskQueueSize() + ") was exceeded");
+                }
+            } catch (final RestartException restartException) {
+                if (logger.isTraceEnabled()) {
+                    logger.trace(KeyValueLogMessage.of("debugger requests restart of planning",
+                            "taskStackSize", taskStack.size(),
+                            "memo", new GroupExpressionPrinter(currentRoot)));
+                }
+                taskStack.clear();
+                currentRoot = GroupExpressionRef.of(expressionSupplier.get());
+                taskStack.push(new OptimizeGroup(context, currentRoot));
+            }
+        }
+    }
+
+    private void exploreExpressionAndOptimizeInputs(@Nonnull PlanContext context,
+                                                    @Nonnull GroupExpressionRef<RelationalExpression> group,
+                                                    @Nonnull final RelationalExpression expression,
+                                                    final boolean forceExploration) {
+        if (expression instanceof QueryPlan) {
+            taskStack.push(new OptimizeInputs(context, group, expression));
+        }
+        exploreExpression(context, group, expression, forceExploration);
+    }
+
+    private void exploreExpression(@Nonnull PlanContext context,
+                                   @Nonnull GroupExpressionRef<RelationalExpression> group,
+                                   @Nonnull final RelationalExpression expression,
+                                   final boolean forceExploration) {
+        Verify.verify(group.containsExactly(expression));
+        if (forceExploration) {
+            taskStack.push(new ExploreExpression(context, group, expression));
+        }  else {
+            taskStack.push(new ReExploreExpression(context, group, expression));
+        }
+    }
+
     /**
      * Represents actual tasks in the task stack of the planner.
      */
@@ -433,7 +459,7 @@ public class CascadesPlanner implements QueryPlanner {
                 for (RelationalExpression member : group.getMembers()) {
                     // enqueue explore expression which then in turn enqueues necessary rules for transformations
                     // and matching
-                    taskStack.push(new ReExploreExpression(context, group, member));
+                    exploreExpressionAndOptimizeInputs(context, group, member, false);
                 }
                 // the second time around we want to visit the else and prune the plan space
                 group.startExploration();
@@ -496,7 +522,7 @@ public class CascadesPlanner implements QueryPlanner {
             if (group.needsExploration()) {
                 taskStack.push(this);
                 for (final RelationalExpression expression : group.getMembers()) {
-                    taskStack.push(new ReExploreExpression(context, group, expression));
+                    exploreExpressionAndOptimizeInputs(context, group, expression, false);
                 }
                 group.startExploration();
             } else {
@@ -576,7 +602,7 @@ public class CascadesPlanner implements QueryPlanner {
         @Override
         public void execute() {
             // Enqueue all rules that need to run after all exploration for a (group, expression) pair is done.
-            ruleSet.getMatchPartitionRules()
+            ruleSet.getMatchPartitionRules(rule -> configuration.isRuleEnabled(rule))
                     .filter(this::shouldEnqueueRule)
                     .forEach(this::enqueueTransformMatchPartition);
 
@@ -584,7 +610,7 @@ public class CascadesPlanner implements QueryPlanner {
             // by the type of their _root_, not any of the stuff lower down. As a result, we have enough information
             // right here to determine the set of all possible rules that could ever be applied here, regardless of
             // what happens towards the leaves of the tree.
-            ruleSet.getExpressionRules(getExpression())
+            ruleSet.getExpressionRules(getExpression(), rule -> configuration.isRuleEnabled(rule))
                     .filter(rule -> !(rule instanceof PlannerRule.PreOrderRule) &&
                                     shouldEnqueueRule(rule))
                     .forEach(this::enqueueTransformTask);
@@ -596,7 +622,7 @@ public class CascadesPlanner implements QueryPlanner {
                     .map(Quantifier::getRangesOver)
                     .forEach(this::enqueueExploreGroup);
 
-            ruleSet.getExpressionRules(getExpression())
+            ruleSet.getExpressionRules(getExpression(), rule -> configuration.isRuleEnabled(rule))
                     .filter(rule -> rule instanceof PlannerRule.PreOrderRule &&
                                     shouldEnqueueRule(rule))
                     .forEach(this::enqueueTransformTask);
@@ -784,23 +810,34 @@ public class CascadesPlanner implements QueryPlanner {
 
         protected void executeRuleCall(@Nonnull CascadesRuleCall ruleCall) {
             ruleCall.run();
+
+            //
+            // Handle produced artifacts (through yield...() calls)
+            //
             for (final PartialMatch newPartialMatch : ruleCall.getNewPartialMatches()) {
                 taskStack.push(new AdjustMatch(getContext(), getGroup(), getExpression(), newPartialMatch));
             }
 
             for (final RelationalExpression newExpression : ruleCall.getNewExpressions()) {
-                if (newExpression instanceof QueryPlan) {
-                    taskStack.push(new OptimizeInputs(getContext(), getGroup(), newExpression));
-                    taskStack.push(new ExploreExpression(getContext(), getGroup(), newExpression));
-                } else {
-                    taskStack.push(new ExploreExpression(getContext(), getGroup(), newExpression));
+                exploreExpressionAndOptimizeInputs(getContext(), getGroup(), newExpression, true);
+            }
+
+            final var referencesWithPushedRequirements = ruleCall.getReferencesWithPushedRequirements();
+            if (!referencesWithPushedRequirements.isEmpty()) {
+                //
+                // There are two distinct cases:
+                // (1) the rule is a pre-order rule -- we can assume that all other rules rooted at this expression
+                //     will follow after the exploration of the subgraph .
+                // (2) the rule is not a pre-order rule -- we need to push a new task onto the stack after the
+                //     re-exploration using the newly pushed requirement.
+                //
+                if (!(rule instanceof PlannerRule.PreOrderRule)) {
+                    taskStack.push(this);
+                }
+                for (final ExpressionRef<? extends RelationalExpression> reference : referencesWithPushedRequirements) {
+                    taskStack.push(new ExploreGroup(context, reference));
                 }
             }
-
-            for (final ExpressionRef<? extends RelationalExpression> reference : ruleCall.getReferencesWithPushedRequirements()) {
-                taskStack.push(new ExploreGroup(context, reference));
-            }
-
         }
 
         @Override
@@ -915,7 +952,7 @@ public class CascadesPlanner implements QueryPlanner {
 
         @Override
         public void execute() {
-            ruleSet.getPartialMatchRules()
+            ruleSet.getPartialMatchRules(rule -> configuration.isRuleEnabled(rule))
                     .forEach(rule -> taskStack.push(new TransformPartialMatch(getContext(), getGroup(), getExpression(), partialMatch, rule)));
         }
 
@@ -978,5 +1015,14 @@ public class CascadesPlanner implements QueryPlanner {
         public String toString() {
             return "OptimizeInputs(" + group + ")";
         }
+    }
+
+    /**
+     * Returns the default set of transformation rules.
+     * @return a {@link PlannerRuleSet} using the default set of transformation rules
+     */
+    @Nonnull
+    public static PlannerRuleSet defaultPlannerRuleSet() {
+        return PlannerRuleSet.DEFAULT;
     }
 }

@@ -25,7 +25,6 @@ import com.apple.foundationdb.record.EndpointType;
 import com.apple.foundationdb.record.EvaluationContext;
 import com.apple.foundationdb.record.ExecuteState;
 import com.apple.foundationdb.record.IndexEntry;
-import com.apple.foundationdb.record.IndexScanType;
 import com.apple.foundationdb.record.IsolationLevel;
 import com.apple.foundationdb.record.RecordCoreException;
 import com.apple.foundationdb.record.RecordCursor;
@@ -45,6 +44,7 @@ import com.apple.foundationdb.record.provider.common.RecordSerializer;
 import com.apple.foundationdb.record.provider.common.TypedRecordSerializer;
 import com.apple.foundationdb.record.provider.foundationdb.keyspace.KeySpacePath;
 import com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache;
+import com.apple.foundationdb.record.query.IndexQueryabilityFilter;
 import com.apple.foundationdb.record.query.ParameterRelationshipGraph;
 import com.apple.foundationdb.record.query.RecordQuery;
 import com.apple.foundationdb.record.query.expressions.QueryComponent;
@@ -119,8 +119,8 @@ public class FDBTypedRecordStore<M extends Message> implements FDBRecordStoreBas
 
     @Nonnull
     @Override
-    public CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull M record, @Nonnull RecordExistenceCheck existenceCheck, @Nullable FDBRecordVersion version, @Nonnull VersionstampSaveBehavior behavior) {
-        return untypedStore.saveTypedRecord(typedSerializer, record, existenceCheck, version, behavior);
+    public CompletableFuture<FDBStoredRecord<M>> saveRecordAsync(@Nonnull M rec, @Nonnull RecordExistenceCheck existenceCheck, @Nullable FDBRecordVersion version, @Nonnull VersionstampSaveBehavior behavior) {
+        return untypedStore.saveTypedRecord(typedSerializer, rec, existenceCheck, version, behavior);
     }
 
     @Nonnull
@@ -165,8 +165,8 @@ public class FDBTypedRecordStore<M extends Message> implements FDBRecordStoreBas
 
     @Nonnull
     @Override
-    public RecordCursor<IndexEntry> scanIndex(@Nonnull Index index, @Nonnull IndexScanType scanType, @Nonnull TupleRange range, @Nullable byte[] continuation, @Nonnull ScanProperties scanProperties) {
-        return untypedStore.scanIndex(index, scanType, range, continuation, scanProperties);
+    public RecordCursor<IndexEntry> scanIndex(@Nonnull Index index, @Nonnull IndexScanBounds scanBounds, @Nullable byte[] continuation, @Nonnull ScanProperties scanProperties) {
+        return untypedStore.scanIndex(index, scanBounds, continuation, scanProperties);
     }
 
     @Nonnull
@@ -218,32 +218,39 @@ public class FDBTypedRecordStore<M extends Message> implements FDBRecordStoreBas
 
     @Nonnull
     @Override
-    public CompletableFuture<Long> getSnapshotRecordCount(@Nonnull KeyExpression key, @Nonnull Key.Evaluated value) {
-        return untypedStore.getSnapshotRecordCount(key, value);
+    public CompletableFuture<Long> getSnapshotRecordCount(@Nonnull KeyExpression key, @Nonnull Key.Evaluated value,
+                                                          @Nonnull IndexQueryabilityFilter indexQueryabilityFilter) {
+        return untypedStore.getSnapshotRecordCount(key, value, indexQueryabilityFilter);
     }
 
     @Nonnull
     @Override
-    public CompletableFuture<Long> getSnapshotRecordCountForRecordType(@Nonnull String recordTypeName) {
-        return untypedStore.getSnapshotRecordCountForRecordType(recordTypeName);
+    public CompletableFuture<Long> getSnapshotRecordCountForRecordType(@Nonnull String recordTypeName,
+                                                                       @Nonnull IndexQueryabilityFilter indexQueryabilityFilter) {
+        return untypedStore.getSnapshotRecordCountForRecordType(recordTypeName, indexQueryabilityFilter);
     }
 
     @Nonnull
     @Override
-    public <T> CompletableFuture<T> evaluateIndexRecordFunction(@Nonnull EvaluationContext evaluationContext, @Nonnull IndexRecordFunction<T> function, @Nonnull FDBRecord<M> record) {
-        return untypedStore.evaluateTypedIndexRecordFunction(evaluationContext, function, record);
+    public <T> CompletableFuture<T> evaluateIndexRecordFunction(@Nonnull EvaluationContext evaluationContext, @Nonnull IndexRecordFunction<T> function, @Nonnull FDBRecord<M> rec) {
+        return untypedStore.evaluateTypedIndexRecordFunction(evaluationContext, function, rec);
     }
 
     @Nonnull
     @Override
-    public <T> CompletableFuture<T> evaluateStoreFunction(@Nonnull EvaluationContext evaluationContext, @Nonnull StoreRecordFunction<T> function, @Nonnull FDBRecord<M> record) {
-        return untypedStore.evaluateTypedStoreFunction(evaluationContext, function, record);
+    public <T> CompletableFuture<T> evaluateStoreFunction(@Nonnull EvaluationContext evaluationContext, @Nonnull StoreRecordFunction<T> function, @Nonnull FDBRecord<M> rec) {
+        return untypedStore.evaluateTypedStoreFunction(evaluationContext, function, rec);
     }
 
     @Nonnull
     @Override
-    public CompletableFuture<Tuple> evaluateAggregateFunction(@Nonnull List<String> recordTypeNames, @Nonnull IndexAggregateFunction aggregateFunction, @Nonnull TupleRange range, @Nonnull IsolationLevel isolationLevel) {
-        return untypedStore.evaluateAggregateFunction(recordTypeNames, aggregateFunction, range, isolationLevel);
+    public CompletableFuture<Tuple> evaluateAggregateFunction(@Nonnull List<String> recordTypeNames,
+                                                              @Nonnull IndexAggregateFunction aggregateFunction,
+                                                              @Nonnull TupleRange range,
+                                                              @Nonnull IsolationLevel isolationLevel,
+                                                              @Nonnull IndexQueryabilityFilter indexQueryabilityFilter) {
+        return untypedStore.evaluateAggregateFunction(recordTypeNames, aggregateFunction, range, isolationLevel,
+                indexQueryabilityFilter);
     }
 
     @Nonnull

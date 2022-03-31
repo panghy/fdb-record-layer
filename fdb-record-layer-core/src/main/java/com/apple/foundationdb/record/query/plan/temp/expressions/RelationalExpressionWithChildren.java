@@ -28,7 +28,7 @@ import com.apple.foundationdb.record.query.plan.temp.MatchInfo;
 import com.apple.foundationdb.record.query.plan.temp.PartialMatch;
 import com.apple.foundationdb.record.query.plan.temp.Quantifier;
 import com.apple.foundationdb.record.query.plan.temp.RelationalExpression;
-import com.apple.foundationdb.record.query.plan.temp.TopologicalSort;
+import com.apple.foundationdb.record.query.combinatorics.TopologicalSort;
 import com.google.common.collect.ImmutableSet;
 
 import javax.annotation.Nonnull;
@@ -115,5 +115,17 @@ public interface RelationalExpressionWithChildren extends RelationalExpression {
             }
         }
         return unmappedForEachQuantifiers;
+    }
+
+    @Nonnull
+    default Set<Quantifier> computeMappedQuantifiers(@Nonnull final PartialMatch partialMatch) {
+        final var matchInfo = partialMatch.getMatchInfo();
+        final var mappedForEachQuantifiers = new LinkedIdentitySet<Quantifier>();
+        for (final Quantifier quantifier : getQuantifiers()) {
+            if (matchInfo.getChildPartialMatch(quantifier.getAlias()).isPresent()) {
+                mappedForEachQuantifiers.add(quantifier);
+            }
+        }
+        return mappedForEachQuantifiers;
     }
 }

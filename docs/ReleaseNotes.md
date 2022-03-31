@@ -4,13 +4,11 @@ This document contains a log of changes to the FoundationDB Record Layer. It aim
 
 As the [versioning guide](Versioning.md) details, it cannot always be determined solely by looking at the version numbers whether one Record Layer version contains all changes included in another. In particular, bug fixes and backwards-compatible changes might be back-ported to or introduced as patches against older versions. To track when a patch version has been included in the main release train, some releases will say as a note that they contain all changes from a specific patch.
 
-## 3.0
+## 3.1
 
 ### Breaking Changes
 
-This verison of the Record Layer removes some legacy elements of the API that were deprecated in previous releases. Most notably, it removes the methods on the `RecordCursor` interface that were compatible with Java `Iterator`s. That API was deprecated in version [2.6](#26) to make it easier for adopters to reason about continuations in asynchronous code by associating each value returned by the cursor with that value's continuation. Adopters still using the deprecated API can either use the `onNext()` and `getNext()` methods on the `RecordCursor` interface or call `asIterator()` to get a `RecordCursorIterator`, which retains compatibility with the `Iterator` interface.
-
-Another, smaller change that has been made is that by default, new indexes added to existing stores (that cannot be built in-line) are now initialized with a `DISABLED` `IndexState` whereas the index used default to a `WRITE_ONLY` state. This means that any records written to the record store prior to the index being built will not perform any I/O to update the index, which is effectively wasted work. However, all indexes must be put in the `WRITE_ONLY` state while they are being built in order to ensure that any updates to the index during the build are captured. This is something that the `OnlineIndexer` should be able to handle automatically for most users, but users of the `ERROR_IF_DISABLED_CONTINUE_IF_WRITE_ONLY` index state precondition may start seeing additional `RecordCoreStorageException`s with the message "Attempted to build non-write-only index" when attempting to build an index. That `IndexStatePrecondition` is not reccommended, however, and users should switch over to using a different `IndexStatePrecondition` (like the default index state precondition, `BUILD_IF_DISABLED_CONTINUE_IF_WRITE_ONLY`) instead or explicitly set the index state on the index to `WRITE_ONLY` prior to building the index. Users can also replicate the old behavior by supplying a `UserVersionChecker` implementation with an appropriate implementation of `needRebuildIndex` to the `FDBRecordStore.Builder`.
+This version of the Record Layer changes the Java source and target compatibility to version 11.  Downstream projects need to be aware that the byte code produced is of class file version `55.0` going forward.
 
 <!--
 // begin next release
@@ -19,8 +17,8 @@ Another, smaller change that has been made is that by default, new indexes added
 * **Bug fix** Fix potential null recordTypeKey in RecordType.getRecordTypeKeyTuple() [(Issue #1395)](https://github.com/FoundationDB/fdb-record-layer/issues/1395)
 * **Bug fix** Fix 2 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
 * **Bug fix** Fix 3 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
-* **Bug fix** Fix 4 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
-* **Bug fix** Fix 5 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
+* **Bug fix** "rebuilding index failed" does not include primary_key [(Issue #1572)](https://github.com/FoundationDB/fdb-record-layer/issues/1572)
+* **Bug fix** Delete records where now handles indexes on key-with-value expressions that split at locations that are in the middle of function key expressions [(Issue #1563)](https://github.com/FoundationDB/fdb-record-layer/issues/1563)
 * **Performance** Improvement 1 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
 * **Performance** Improvement 2 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
 * **Performance** Improvement 3 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
@@ -29,8 +27,8 @@ Another, smaller change that has been made is that by default, new indexes added
 * **Feature** Feature 1 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
 * **Feature** Feature 2 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
 * **Feature** Feature 3 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
-* **Feature** integrate boolean normalization into planning process [(Issue #1301)](https://github.com/FoundationDB/fdb-record-layer/issues/1301)
-* Index Scrubber: missing index entry”: Add the (virtual) missing index’s key to the log message [(Issue #1392)](https://github.com/FoundationDB/fdb-record-layer/issues/1392)
+* **Feature** Feature 4 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
+* **Feature** Feature 5 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
 * **Breaking change** Change 1 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
 * **Breaking change** Change 2 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
 * **Breaking change** Change 3 [(Issue #NNN)](https://github.com/FoundationDB/fdb-record-layer/issues/NNN)
@@ -39,6 +37,140 @@ Another, smaller change that has been made is that by default, new indexes added
 
 // end next release
 -->
+
+### 3.1.246.0
+
+* **Feature** Lucene plans should support simple comparisons on indexed fields and fielded search [(Issue #1238)](https://github.com/FoundationDB/fdb-record-layer/issues/1238)
+* **Breaking change** Adjust Lucene index to use new scan bounds [(Issue #1517)](https://github.com/FoundationDB/fdb-record-layer/issues/1517)
+* **Breaking change** Lucene index entry grouping key consistency [(Issue #1528)](https://github.com/FoundationDB/fdb-record-layer/issues/1528)
+* **Breaking change** Lucene specific code should be in the lucene module [(Issue #1529)](https://github.com/FoundationDB/fdb-record-layer/issues/1529)
+
+### 3.1.244.0
+
+* **Feature** Type system for Values [(Issue #1545](https://github.com/FoundationDB/fdb-record-layer/issues/1545)
+
+### 3.1.243.0
+
+* **Feature** Index scrubber - return the count of bad entries found [(Issue #1547)](https://github.com/FoundationDB/fdb-record-layer/issues/1547)
+* **Feature** Allow scrubbing of non-"value" indexes [(Issue #1551)](https://github.com/FoundationDB/fdb-record-layer/issues/1551)
+
+### 3.1.242.0
+
+
+### 3.1.241.0
+
+
+### 3.1.240.0
+
+
+### 3.1.239.0
+
+
+### 3.1.238.0
+
+* **Feature** Support custom additional synonyms. This introduces a new SynonymMapRegistry.
+New synonym maps should implement `SynonymMapConfig`. See example `EnglishSynonymMap`.
+
+### 3.1.237.0
+
+
+### 3.1.236.0
+
+
+### 3.1.235.0
+
+* **Feature** Reconsider IndexMaintainer.scan signature [(Issue #1506)](https://github.com/FoundationDB/fdb-record-layer/issues/1506)
+
+### 3.1.234.0
+
+
+### 3.1.233.0
+
+
+### 3.1.232.0
+
+* **Feature** Expose IndexQueryabilityFilter for Aggregate planning [(Issue #1520)](https://github.com/FoundationDB/fdb-record-layer/issues/1520)
+* **Breaking change** As part of [(Issue #1520)](https://github.com/FoundationDB/fdb-record-layer/issues/1520) implementers
+of `FDBRecordStoreBase` need to implement a new overload of `getSnapshotRecordCountForRecordType` and `evaluateAggregateFunction`
+that takes an `IndexQueryabilityFilter`. In addition some methods on `IndexFunctionHelper` and `ComposedBitmapIndexAggregate`
+now take an `IndexQueryabilityFilter`; to preserve backwards compatibility, if all indexes are valid,
+`IndexQueryabilityFilter.TRUE` can be used.
+
+### 3.1.231.0
+
+* **Feature** Support auto complete suggestions for Lucene search [(Issue #1504)](https://github.com/FoundationDB/fdb-record-layer/issues/1504)
+
+### 3.1.228.0
+
+* **Feature** Chooser and Comparator plans [(Issue #1471)](https://github.com/FoundationDB/fdb-record-layer/issues/1471)
+* **Feature** Handle Comparator plan with keys that resolve to repeated fields [(Issue #1501)](https://github.com/FoundationDB/fdb-record-layer/issues/1501)
+* **Breaking change** As part of a refactoring of log keys, the log key `LogMessageKeys.ORIGINAL_DATA_SIZE` now displays as `original_data_size` instead of `original_data-size` and a typo has been fixed in the name of `LogMessageKeys.DIRECTORY` (from `DIRECTOY`) [(Issue #1500)](https://github.com/FoundationDB/fdb-record-layer/issues/1500)
+
+### 3.1.227.0
+
+* **Breaking change** Clean up LuceneDocumentFromRecord. Changes definition format for full-text fields; indexes will need to be redefined and rebuilt. [(Issue #1235)](https://github.com/FoundationDB/fdb-record-layer/issues/1235)
+
+### 3.1.226.0
+
+
+### 3.1.224.0
+
+* **Bug fix** Use 2 separate analyzers for indexing time and query time in LuceneIndexMaintainer [(Issue #1486)](https://github.com/FoundationDB/fdb-record-layer/issues/1486)
+* **Feature** Suppor synonym for Lucene indexing [(Issue #1488)](https://github.com/FoundationDB/fdb-record-layer/issues/1488)
+
+### 3.1.223.0
+
+* **Feature** Passing properties configured by adopter into FDBRecordContext [(Issue #1478)](https://github.com/FoundationDB/fdb-record-layer/issues/1478)
+* Online Indexer: add time limit to OnlineIndexer.Config [(Issue #1459)](https://github.com/FoundationDB/fdb-record-layer/issues/1459)
+* **Breaking change** Support compression for Lucene data. Backwards compatibility is not supported, so upgrading requires rebuilding Lucene indexes during which search requests cannot be completed. [(Issue #1466)](https://github.com/FoundationDB/fdb-record-layer/issues/1466)
+
+### 3.1.222.0
+
+* **Feature** Make QueryPlanResult and QueryPlanInfo immutable [(Issue #1456)](https://github.com/FoundationDB/fdb-record-layer/issues/1456)
+* **Breaking change** Up java source and target compatibility to 11 [(Issue #1454)](https://github.com/FoundationDB/fdb-record-layer/issues/1454)
+* **Breaking change** Codec with a few optimizations for speeding up compound files sitting on FoundationDB. Backwards compatibility is not supported, so rebuilding Lucene indexes with shutting down search requests handling is needed for transition. [(Issue #1457)](https://github.com/FoundationDB/fdb-record-layer/issues/1457)
+
+## 3.0
+
+### Breaking Changes
+
+This version of the Record Layer removes some legacy elements of the API that were deprecated in previous releases. Most notably, it removes the methods on the `RecordCursor` interface that were compatible with Java `Iterator`s. That API was deprecated in version [2.6](#26) to make it easier for adopters to reason about continuations in asynchronous code by associating each value returned by the cursor with that value's continuation. Adopters still using the deprecated API can either use the `onNext()` and `getNext()` methods on the `RecordCursor` interface or call `asIterator()` to get a `RecordCursorIterator`, which retains compatibility with the `Iterator` interface.
+
+Another, smaller change that has been made is that by default, new indexes added to existing stores (that cannot be built in-line) are now initialized with a `DISABLED` `IndexState` whereas the index used default to a `WRITE_ONLY` state. This means that any records written to the record store prior to the index being built will not perform any I/O to update the index, which is effectively wasted work. However, all indexes must be put in the `WRITE_ONLY` state while they are being built in order to ensure that any updates to the index during the build are captured. This is something that the `OnlineIndexer` should be able to handle automatically for most users, but users of the `ERROR_IF_DISABLED_CONTINUE_IF_WRITE_ONLY` index state precondition may start seeing additional `RecordCoreStorageException`s with the message "Attempted to build non-write-only index" when attempting to build an index. That `IndexStatePrecondition` is not reccommended, however, and users should switch over to using a different `IndexStatePrecondition` (like the default index state precondition, `BUILD_IF_DISABLED_CONTINUE_IF_WRITE_ONLY`) instead or explicitly set the index state on the index to `WRITE_ONLY` prior to building the index. Users can also replicate the old behavior by supplying a `UserVersionChecker` implementation with an appropriate implementation of `needRebuildIndex` to the `FDBRecordStore.Builder`.
+
+### 3.0.221.0
+
+* **Bug fix** allow planner rules to be disabled via planner configuration [(Issue #1445)](https://github.com/FoundationDB/fdb-record-layer/issues/1445)
+
+### 3.0.220.0
+
+* InstrumentedTransaction: Distinguish reads from range_reads and deletes from range_deletes [(Issue #1435)](https://github.com/FoundationDB/fdb-record-layer/issues/1435)
+
+### 3.0.219.0
+
+* **Bug fix** Uniqueness violations encountered in new indexes built during store opening times now fail the index build [(Issue #1371)](https://github.com/FoundationDB/fdb-record-layer/issues/1371)
+* **Feature** Streaming aggregate operator implementation [(Issue #1376)](https://github.com/FoundationDB/fdb-record-layer/issues/1376)
+* **Feature** Online Indexer: support multi target indexing [(Issue #1398)](https://github.com/FoundationDB/fdb-record-layer/issues/1398)
+
+### 3.0.218.0
+
+* **Feature** Added store timers to track compression efficacy [(Issue #1412)](https://github.com/FoundationDB/fdb-record-layer/issues/1412)
+
+### 3.0.217.0
+
+
+### 3.0.216.0
+
+* **Feature** Publish per-transaction I/O metrics and commit failure metrics [(Issue #1402)](https://github.com/FoundationDB/fdb-record-layer/issues/1402)
+
+### 3.0.215.0
+
+
+### 3.0.214.0
+
+* **Bug fix** Fix potential null recordTypeKey in RecordType.getRecordTypeKeyTuple() [(Issue #1395)](https://github.com/FoundationDB/fdb-record-layer/issues/1395)
+* **Feature** integrate boolean normalization into planning process [(Issue #1301)](https://github.com/FoundationDB/fdb-record-layer/issues/1301)
+* Index Scrubber: missing index entry”: Add the (virtual) missing index’s key to the log message [(Issue #1392)](https://github.com/FoundationDB/fdb-record-layer/issues/1392)
 
 ### 3.0.213.0
 
@@ -180,7 +312,7 @@ Another, smaller change that has been made is that by default, new indexes added
 
 ### Breaking Changes
 
-In this realase, the various implementations of the `RecordQueryPlan` interface have  moved to API stability level `INTERNAL`. This means that individual implementations may change without notice. Clients that are not creating `RecordQueryPlan` objects directly (but instead using the planner to create plans) should not be affected.
+In this release, the various implementations of the `RecordQueryPlan` interface have  moved to API stability level `INTERNAL`. This means that individual implementations may change without notice. Clients that are not creating `RecordQueryPlan` objects directly (but instead using the planner to create plans) should not be affected.
 
 ### 2.10.180.0
 

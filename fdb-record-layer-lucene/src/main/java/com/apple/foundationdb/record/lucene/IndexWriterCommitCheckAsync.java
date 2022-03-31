@@ -23,15 +23,16 @@ package com.apple.foundationdb.record.lucene;
 import com.apple.foundationdb.annotation.API;
 import com.apple.foundationdb.async.AsyncUtil;
 import com.apple.foundationdb.record.RecordCoreStorageException;
+import com.apple.foundationdb.record.lucene.codec.LuceneOptimizedCodec;
 import com.apple.foundationdb.record.provider.foundationdb.FDBRecordContext;
 import com.apple.foundationdb.record.provider.foundationdb.IndexMaintainerState;
+import com.apple.foundationdb.subspace.Subspace;
+import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.codecs.lucene50.Lucene50StoredFieldsFormat;
-import org.apache.lucene.codecs.lucene70.Lucene70Codec;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.MergePolicy;
+import org.apache.lucene.index.MergeTrigger;
 import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.util.IOUtils;
 import org.slf4j.Logger;
@@ -59,27 +60,29 @@ public class IndexWriterCommitCheckAsync implements FDBRecordContext.CommitCheck
     /**
      * Creates an index writer config with merge configurations that limit the amount of data in a segment.
      *
+     * @param state the state for the index maintainer
      * @param analyzer analyzer
      * @param directoryCommitCheckAsync directoryCommitCheckAsync
      * @param executor executor
      * @throws IOException exception
      */
-    public IndexWriterCommitCheckAsync(@Nonnull Analyzer analyzer, @Nonnull DirectoryCommitCheckAsync directoryCommitCheckAsync, Executor executor) throws IOException {
+    public IndexWriterCommitCheckAsync(@Nonnull IndexMaintainerState state, @Nonnull Analyzer analyzer,
+                                       @Nonnull DirectoryCommitCheckAsync directoryCommitCheckAsync, Executor executor) throws IOException {
         TieredMergePolicy tieredMergePolicy = new TieredMergePolicy();
-        tieredMergePolicy.setMaxMergedSegmentMB(5.00);
-        tieredMergePolicy.setMaxMergeAtOnceExplicit(2);
+        tieredMergePolicy.setMaxMergedSegmentMB(Math.max(0.0, state.context.getPropertyStorage().getPropertyValue(LuceneRecordContextProperties.LUCENE_MERGE_MAX_SIZE)));
         tieredMergePolicy.setNoCFSRatio(1.00);
         IndexWriterConfig indexWriterConfig = new IndexWriterConfig(analyzer);
         indexWriterConfig.setUseCompoundFile(true);
         indexWriterConfig.setMergePolicy(tieredMergePolicy);
         indexWriterConfig.setMergeScheduler(new ConcurrentMergeScheduler() {
             @Override
-            protected void doMerge(final IndexWriter writer, final MergePolicy.OneMerge merge) throws IOException {
-                merge.segments.forEach( (segmentCommitInfo) -> LOGGER.trace("segmentInfo={}", segmentCommitInfo.info.name));
-                super.doMerge(writer, merge);
+            public synchronized void merge(final MergeSource mergeSource, final MergeTrigger trigger) throws IOException {
+                LOGGER.trace("mergeSource={}", mergeSource);
+                super.merge(mergeSource, trigger);
             }
         });
-        indexWriterConfig.setCodec(new Lucene70Codec(Lucene50StoredFieldsFormat.Mode.BEST_COMPRESSION));
+        indexWriterConfig.setCodec(new LuceneOptimizedCodec());
+        indexWriterConfig.setInfoStream(new LuceneLoggerInfoStream(LOGGER));
         this.indexWriter = new IndexWriter(directoryCommitCheckAsync.getDirectory(), indexWriterConfig);
         this.executor = executor;
     }
@@ -109,26 +112,26 @@ public class IndexWriterCommitCheckAsync implements FDBRecordContext.CommitCheck
     }
 
     @Nullable
-    protected static IndexWriterCommitCheckAsync getIndexWriterCommitCheckAsync(@Nonnull final IndexMaintainerState state) {
-        return state.context.getInSession(getWriterName(state), IndexWriterCommitCheckAsync.class);
+    protected static IndexWriterCommitCheckAsync getIndexWriterCommitCheckAsync(@Nonnull final IndexMaintainerState state, @Nullable final Tuple groupingKey) {
+        return state.context.getInSession(getWriterSubspace(state, groupingKey), IndexWriterCommitCheckAsync.class);
     }
 
     @Nonnull
-    protected static IndexWriter getOrCreateIndexWriter(@Nonnull final IndexMaintainerState state, @Nonnull Analyzer analyzer, @Nonnull Executor executor) throws IOException {
+    protected static IndexWriter getOrCreateIndexWriter(@Nonnull final IndexMaintainerState state, @Nonnull Analyzer analyzer, @Nonnull Executor executor, @Nullable final Tuple groupingKey) throws IOException {
         synchronized (state.context) {
-            IndexWriterCommitCheckAsync writerCheck = getIndexWriterCommitCheckAsync(state);
+            IndexWriterCommitCheckAsync writerCheck = getIndexWriterCommitCheckAsync(state, groupingKey);
             if (writerCheck == null) {
-                writerCheck = new IndexWriterCommitCheckAsync(analyzer, getOrCreateDirectoryCommitCheckAsync(state), executor);
+                writerCheck = new IndexWriterCommitCheckAsync(state, analyzer, getOrCreateDirectoryCommitCheckAsync(state, groupingKey), executor);
                 state.context.addCommitCheck(writerCheck);
-                state.context.putInSessionIfAbsent(getWriterName(state), writerCheck);
+                state.context.putInSessionIfAbsent(getWriterSubspace(state, groupingKey), writerCheck);
             }
             return writerCheck.indexWriter;
         }
     }
 
     @Nonnull
-    private static String getWriterName(@Nonnull final IndexMaintainerState state) {
-        return "writer$" + state.index.getName();
+    private static Subspace getWriterSubspace(@Nonnull final IndexMaintainerState state, @Nullable final Tuple groupingKey) {
+        return state.indexSubspace.subspace(groupingKey).subspace(Tuple.from("w"));
     }
 
 }

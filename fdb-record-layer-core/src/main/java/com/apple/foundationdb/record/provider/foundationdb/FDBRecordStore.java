@@ -42,7 +42,6 @@ import com.apple.foundationdb.record.ExecuteProperties;
 import com.apple.foundationdb.record.ExecuteState;
 import com.apple.foundationdb.record.FunctionNames;
 import com.apple.foundationdb.record.IndexEntry;
-import com.apple.foundationdb.record.IndexScanType;
 import com.apple.foundationdb.record.IndexState;
 import com.apple.foundationdb.record.IsolationLevel;
 import com.apple.foundationdb.record.MutableRecordStoreState;
@@ -78,6 +77,7 @@ import com.apple.foundationdb.record.provider.common.DynamicMessageRecordSeriali
 import com.apple.foundationdb.record.provider.common.RecordSerializer;
 import com.apple.foundationdb.record.provider.foundationdb.keyspace.KeySpacePath;
 import com.apple.foundationdb.record.provider.foundationdb.storestate.FDBRecordStoreStateCache;
+import com.apple.foundationdb.record.query.IndexQueryabilityFilter;
 import com.apple.foundationdb.record.query.ParameterRelationshipGraph;
 import com.apple.foundationdb.record.query.QueryToKeyMatcher;
 import com.apple.foundationdb.record.query.RecordQuery;
@@ -379,7 +379,7 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
 
     /**
      * Async version of {@link #saveRecord(Message, RecordExistenceCheck, FDBRecordVersion, VersionstampSaveBehavior)}.
-     * @param record the record to save
+     * @param rec the record to save
      * @param existenceCheck when to throw an exception if a record with the same primary key does or does not already exist
      * @param version the associated record version
      * @param behavior the save behavior w.r.t. the given <code>version</code>
@@ -387,24 +387,24 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
      */
     @Override
     @Nonnull
-    public CompletableFuture<FDBStoredRecord<Message>> saveRecordAsync(@Nonnull final Message record, @Nonnull RecordExistenceCheck existenceCheck,
+    public CompletableFuture<FDBStoredRecord<Message>> saveRecordAsync(@Nonnull final Message rec, @Nonnull RecordExistenceCheck existenceCheck,
                                                                        @Nullable FDBRecordVersion version, @Nonnull final VersionstampSaveBehavior behavior) {
-        return saveTypedRecord(serializer, record, existenceCheck, version, behavior);
+        return saveTypedRecord(serializer, rec, existenceCheck, version, behavior);
     }
 
     @Nonnull
     @API(API.Status.INTERNAL)
     protected <M extends Message> CompletableFuture<FDBStoredRecord<M>> saveTypedRecord(@Nonnull RecordSerializer<M> typedSerializer,
-                                                                                        @Nonnull M record,
+                                                                                        @Nonnull M rec,
                                                                                         @Nonnull RecordExistenceCheck existenceCheck,
                                                                                         @Nullable FDBRecordVersion version,
                                                                                         @Nonnull VersionstampSaveBehavior behavior) {
         final RecordMetaData metaData = metaDataProvider.getRecordMetaData();
-        final Descriptors.Descriptor recordDescriptor = record.getDescriptorForType();
+        final Descriptors.Descriptor recordDescriptor = rec.getDescriptorForType();
         final RecordType recordType = metaData.getRecordTypeForDescriptor(recordDescriptor);
         final KeyExpression primaryKeyExpression = recordType.getPrimaryKey();
 
-        final FDBStoredRecordBuilder<M> recordBuilder = FDBStoredRecord.newBuilder(record).setRecordType(recordType);
+        final FDBStoredRecordBuilder<M> recordBuilder = FDBStoredRecord.newBuilder(rec).setRecordType(recordType);
         final FDBRecordVersion recordVersion = recordVersionForSave(metaData, version, behavior);
         recordBuilder.setVersion(recordVersion);
         final Tuple primaryKey = primaryKeyExpression.evaluateSingleton(recordBuilder).toTuple();
@@ -441,12 +441,12 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
         return context.instrument(FDBStoreTimer.Events.SAVE_RECORD, result);
     }
 
-    private <M extends Message> void addRecordCount(@Nonnull RecordMetaData metaData, @Nonnull FDBStoredRecord<M> record, @Nonnull byte[] increment) {
+    private <M extends Message> void addRecordCount(@Nonnull RecordMetaData metaData, @Nonnull FDBStoredRecord<M> rec, @Nonnull byte[] increment) {
         if (metaData.getRecordCountKey() == null) {
             return;
         }
         final Transaction tr = ensureContextActive();
-        Key.Evaluated subkey = metaData.getRecordCountKey().evaluateSingleton(record);
+        Key.Evaluated subkey = metaData.getRecordCountKey().evaluateSingleton(rec);
         final byte[] keyBytes = getSubspace().pack(Tuple.from(RECORD_COUNT_KEY).addAll(subkey.toTupleAppropriateList()));
         tr.mutate(MutationType.ADD, keyBytes, increment);
     }
@@ -732,11 +732,11 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
             if (constituentKey == null) {
                 futures[i] = AsyncUtil.DONE;
             } else {
-                futures[i] = loadRecordAsync(constituentKey).thenApply(record -> {
-                    if (record == null) {
+                futures[i] = loadRecordAsync(constituentKey).thenApply(rec -> {
+                    if (rec == null) {
                         throw new RecordDoesNotExistException("constituent record not found: " + constituent.getName());
                     }
-                    constituents.put(constituent.getName(), record);
+                    constituents.put(constituent.getName(), rec);
                     return null;
                 });
             }
@@ -959,12 +959,12 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
         final byte[] serialized = rawRecord.getRawRecord();
 
         try {
-            final M record = typedSerializer.deserialize(metaData, primaryKey, rawRecord.getRawRecord(), getTimer());
-            final RecordType recordType = metaData.getRecordTypeForDescriptor(record.getDescriptorForType());
+            final M protoRecord = typedSerializer.deserialize(metaData, primaryKey, rawRecord.getRawRecord(), getTimer());
+            final RecordType recordType = metaData.getRecordTypeForDescriptor(protoRecord.getDescriptorForType());
             countKeysAndValues(FDBStoreTimer.Counts.LOAD_RECORD_KEY, FDBStoreTimer.Counts.LOAD_RECORD_KEY_BYTES, FDBStoreTimer.Counts.LOAD_RECORD_VALUE_BYTES,
                     rawRecord);
 
-            final FDBStoredRecordBuilder<M> recordBuilder = FDBStoredRecord.newBuilder(record)
+            final FDBStoredRecordBuilder<M> recordBuilder = FDBStoredRecord.newBuilder(protoRecord)
                     .setPrimaryKey(primaryKey).setRecordType(recordType).setSize(rawRecord);
 
             if (rawRecord.hasVersion()) {
@@ -1197,17 +1197,15 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
 
     @Override
     @Nonnull
-    public RecordCursor<IndexEntry> scanIndex(@Nonnull Index index, @Nonnull IndexScanType scanType,
-                                              @Nonnull TupleRange range,
-                                              @Nullable byte[] continuation,
-                                              @Nonnull ScanProperties scanProperties) {
+    public RecordCursor<IndexEntry> scanIndex(@Nonnull Index index, @Nonnull IndexScanBounds scanBounds,
+                                              @Nullable byte[] continuation, @Nonnull ScanProperties scanProperties) {
         if (!isIndexReadable(index)) {
             throw new ScanNonReadableIndexException("Cannot scan non-readable index",
                     LogMessageKeys.INDEX_NAME, index.getName(),
                     subspaceProvider.logKey(), subspaceProvider.toString(context));
         }
         RecordCursor<IndexEntry> result = getIndexMaintainer(index)
-                .scan(scanType, range, continuation, scanProperties);
+                .scan(scanBounds, continuation, scanProperties);
         return context.instrument(FDBStoreTimer.Events.SCAN_INDEX_KEYS, result);
     }
 
@@ -1238,6 +1236,36 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
                 return AsyncUtil.DONE;
             }
         }, getPipelineSize(PipelineOperation.RESOLVE_UNIQUENESS));
+    }
+
+    @API(API.Status.INTERNAL)
+    public void addIndexUniquenessCommitCheck(@Nonnull Index index, @Nonnull CompletableFuture<Void> check) {
+        IndexUniquenessCommitCheck commitCheck = new IndexUniquenessCommitCheck(index, check);
+        getRecordContext().addCommitCheck(commitCheck);
+    }
+
+    /**
+     * Return a future that is ready when all uniqueness commit checks for the given index have completed.
+     * This is needed because the uniqueness checks happen in the background, and if we rebuild an index in a
+     * single transaction, we need to make sure that those checks have completed prior to trying to mark the
+     * index as readable.
+     *
+     * @param index the index to collect commit checks for
+     * @return a future that will complete when all outstanding uniqueness checks for the index have completed
+     */
+    @Nonnull
+    @VisibleForTesting
+    CompletableFuture<Void> whenAllIndexUniquenessCommitChecks(@Nonnull Index index) {
+        List<FDBRecordContext.CommitCheckAsync> indexUniquenessChecks = getRecordContext().getCommitChecks(commitCheck -> {
+            if (commitCheck instanceof IndexUniquenessCommitCheck) {
+                return ((IndexUniquenessCommitCheck)commitCheck).getIndex().equals(index);
+            } else {
+                return false;
+            }
+        });
+        return AsyncUtil.whenAll(indexUniquenessChecks.stream()
+                .map(FDBRecordContext.CommitCheckAsync::checkAsync)
+                .collect(Collectors.toList()));
     }
 
     @Override
@@ -1579,7 +1607,8 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
     }
 
     @Override
-    public CompletableFuture<Long> getSnapshotRecordCount(@Nonnull KeyExpression key, @Nonnull Key.Evaluated value) {
+    public CompletableFuture<Long> getSnapshotRecordCount(@Nonnull KeyExpression key, @Nonnull Key.Evaluated value,
+                                                          @Nonnull IndexQueryabilityFilter indexQueryabilityFilter) {
         if (getRecordMetaData().getRecordCountKey() != null) {
             if (key.getColumnSize() != value.size()) {
                 throw recordCoreException("key and value are not the same size");
@@ -1593,15 +1622,18 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
                 return MoreAsyncUtil.reduce(getExecutor(), kvs.iterator(), 0L, (count, kv) -> count + decodeRecordCount(kv.getValue()));
             }
         }
-        return evaluateAggregateFunction(Collections.emptyList(), IndexFunctionHelper.count(key), value, IsolationLevel.SNAPSHOT)
+        return evaluateAggregateFunction(Collections.emptyList(), IndexFunctionHelper.count(key),
+                TupleRange.allOf(value.toTuple()), IsolationLevel.SNAPSHOT, indexQueryabilityFilter)
                 .thenApply(tuple -> tuple.getLong(0));
     }
 
     @Override
-    public CompletableFuture<Long> getSnapshotRecordCountForRecordType(@Nonnull String recordTypeName) {
+    public CompletableFuture<Long> getSnapshotRecordCountForRecordType(@Nonnull String recordTypeName,
+                                                                       @Nonnull IndexQueryabilityFilter indexQueryabilityFilter) {
         // A COUNT index on this record type.
         IndexAggregateFunction aggregateFunction = IndexFunctionHelper.count(EmptyKeyExpression.EMPTY);
-        Optional<IndexMaintainer> indexMaintainer = IndexFunctionHelper.indexMaintainerForAggregateFunction(this, aggregateFunction, Collections.singletonList(recordTypeName));
+        Optional<IndexMaintainer> indexMaintainer = IndexFunctionHelper.indexMaintainerForAggregateFunction(this,
+                aggregateFunction, Collections.singletonList(recordTypeName), indexQueryabilityFilter);
         if (indexMaintainer.isPresent()) {
             return indexMaintainer.get().evaluateAggregateFunction(aggregateFunction, TupleRange.ALL, IsolationLevel.SNAPSHOT)
                     .thenApply(tuple -> tuple.getLong(0));
@@ -1610,7 +1642,8 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
         // In fact, any COUNT index by record type that applied to this record type would work, no matter what other
         // types it applied to.
         aggregateFunction = IndexFunctionHelper.count(Key.Expressions.recordType());
-        indexMaintainer = IndexFunctionHelper.indexMaintainerForAggregateFunction(this, aggregateFunction, Collections.emptyList());
+        indexMaintainer = IndexFunctionHelper.indexMaintainerForAggregateFunction(this,
+                aggregateFunction, Collections.emptyList(), indexQueryabilityFilter);
         if (indexMaintainer.isPresent()) {
             RecordType recordType = getRecordMetaData().getRecordType(recordTypeName);
             return indexMaintainer.get().evaluateAggregateFunction(aggregateFunction, TupleRange.allOf(recordType.getRecordTypeKeyTuple()), IsolationLevel.SNAPSHOT)
@@ -1631,38 +1664,38 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
     @Nonnull
     public <T> CompletableFuture<T> evaluateIndexRecordFunction(@Nonnull EvaluationContext evaluationContext,
                                                                 @Nonnull IndexRecordFunction<T> function,
-                                                                @Nonnull FDBRecord<Message> record) {
-        return evaluateTypedIndexRecordFunction(evaluationContext, function, record);
+                                                                @Nonnull FDBRecord<Message> rec) {
+        return evaluateTypedIndexRecordFunction(evaluationContext, function, rec);
     }
 
     @Nonnull
     protected <T, M extends Message> CompletableFuture<T> evaluateTypedIndexRecordFunction(@Nonnull EvaluationContext evaluationContext,
                                                                                            @Nonnull IndexRecordFunction<T> indexRecordFunction,
-                                                                                           @Nonnull FDBRecord<M> record) {
-        return IndexFunctionHelper.indexMaintainerForRecordFunction(this, indexRecordFunction, record)
+                                                                                           @Nonnull FDBRecord<M> rec) {
+        return IndexFunctionHelper.indexMaintainerForRecordFunction(this, indexRecordFunction, rec)
                 .orElseThrow(() -> recordCoreException("Record function " + indexRecordFunction +
-                                                       " requires appropriate index on " + record.getRecordType().getName()))
-            .evaluateRecordFunction(evaluationContext, indexRecordFunction, record);
+                                                       " requires appropriate index on " + rec.getRecordType().getName()))
+            .evaluateRecordFunction(evaluationContext, indexRecordFunction, rec);
     }
 
     @Override
     @Nonnull
     public <T> CompletableFuture<T> evaluateStoreFunction(@Nonnull EvaluationContext evaluationContext,
                                                           @Nonnull StoreRecordFunction<T> function,
-                                                          @Nonnull FDBRecord<Message> record) {
-        return evaluateTypedStoreFunction(evaluationContext, function, record);
+                                                          @Nonnull FDBRecord<Message> rec) {
+        return evaluateTypedStoreFunction(evaluationContext, function, rec);
     }
 
     @SuppressWarnings("unchecked")
     @Nonnull
     public <T, M extends Message> CompletableFuture<T> evaluateTypedStoreFunction(@Nonnull EvaluationContext evaluationContext,
                                                                                   @Nonnull StoreRecordFunction<T> function,
-                                                                                  @Nonnull FDBRecord<M> record) {
+                                                                                  @Nonnull FDBRecord<M> rec) {
         if (function.getName().equals(FunctionNames.VERSION)) {
-            if (record.hasVersion() && record.getVersion().isComplete()) {
-                return CompletableFuture.completedFuture((T) record.getVersion());
+            if (rec.hasVersion() && rec.getVersion().isComplete()) {
+                return CompletableFuture.completedFuture((T) rec.getVersion());
             }
-            return (CompletableFuture<T>) loadRecordVersionAsync(record.getPrimaryKey()).orElse(CompletableFuture.completedFuture(null));
+            return (CompletableFuture<T>) loadRecordVersionAsync(rec.getPrimaryKey()).orElse(CompletableFuture.completedFuture(null));
         } else {
             throw recordCoreException("Unknown store function " + function.getName());
         }
@@ -1673,8 +1706,10 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
     public CompletableFuture<Tuple> evaluateAggregateFunction(@Nonnull List<String> recordTypeNames,
                                                               @Nonnull IndexAggregateFunction aggregateFunction,
                                                               @Nonnull TupleRange range,
-                                                              @Nonnull IsolationLevel isolationLevel) {
-        return IndexFunctionHelper.indexMaintainerForAggregateFunction(this, aggregateFunction, recordTypeNames)
+                                                              @Nonnull IsolationLevel isolationLevel,
+                                                              @Nonnull IndexQueryabilityFilter indexQueryabilityFilter) {
+        return IndexFunctionHelper.indexMaintainerForAggregateFunction(this,
+                        aggregateFunction, recordTypeNames, indexQueryabilityFilter)
                 .orElseThrow(() ->
                         new AggregateFunctionNotSupportedException("Aggregate function requires appropriate index",
                                 LogMessageKeys.FUNCTION, aggregateFunction,
@@ -2565,12 +2600,29 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
             // updates cause spurious not_committed errors.
             byte[] indexKey = indexStateSubspace().pack(indexName);
             Transaction tr = context.ensureActive();
-            CompletableFuture<Boolean> future = tr.get(indexKey).thenApply(previous -> {
-                if (previous == null || !Tuple.fromBytes(previous).get(0).equals(indexState.code())) {
+            CompletableFuture<Boolean> future = tr.get(indexKey).thenCompose(previous -> {
+                if (previous == null) {
+                    RangeSet indexRangeSet = new RangeSet(indexRangeSubspace(getRecordMetaData().getIndex(indexName)));
+                    return indexRangeSet.isEmpty(tr)
+                            .thenCompose(isEmpty -> {
+                                if (isEmpty) {
+                                    // For readable indexes, we have an optimization where the range set is cleared out
+                                    // after the index is build to avoid carrying extra meta-data about the index range
+                                    // set. However, when we mark an index as write-only, we want to preserve the record
+                                    // that the index was completely built (if the range set was empty, i.e., cleared)
+                                    return indexRangeSet.insertRange(tr, null, null);
+                                } else {
+                                    return AsyncUtil.READY_FALSE;
+                                }
+                            }).thenApply(ignore -> {
+                                updateIndexState(indexName, indexKey, indexState);
+                                return true;
+                            });
+                } else if (!Tuple.fromBytes(previous).get(0).equals(indexState.code())) {
                     updateIndexState(indexName, indexKey, indexState);
-                    return true;
+                    return AsyncUtil.READY_TRUE;
                 } else {
-                    return false;
+                    return AsyncUtil.READY_FALSE;
                 }
             }).whenComplete((b, t) -> endRecordStoreStateWrite());
             haveFuture = true;
@@ -2734,10 +2786,12 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
             CompletableFuture<Boolean> future = tr.get(indexKey).thenCompose(previous -> {
                 if (previous != null) {
                     CompletableFuture<Optional<Range>> builtFuture = firstUnbuiltRange(index);
-                    CompletableFuture<Optional<RecordIndexUniquenessViolation>> uniquenessFuture = scanUniquenessViolations(index, 1).first();
+                    CompletableFuture<Optional<RecordIndexUniquenessViolation>> uniquenessFuture = whenAllIndexUniquenessCommitChecks(index)
+                            .thenCompose(vignore -> scanUniquenessViolations(index, 1).first());
                     return CompletableFuture.allOf(builtFuture, uniquenessFuture).thenApply(vignore -> {
                         Optional<Range> firstUnbuilt = context.join(builtFuture);
                         Optional<RecordIndexUniquenessViolation> uniquenessViolation = context.join(uniquenessFuture);
+
                         if (firstUnbuilt.isPresent()) {
                             throw new IndexNotBuiltException("Attempted to make unbuilt index readable" , firstUnbuilt.get(),
                                     LogMessageKeys.INDEX_NAME, index.getName(),
@@ -2792,10 +2846,14 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
     }
 
     private void logExceptionAsWarn(KeyValueLogMessage message, Throwable exception) {
-        if (exception instanceof LoggableException) {
-            LoggableException loggable = (LoggableException) exception;
-            LOGGER.warn(message.addKeysAndValues(loggable.getLogInfo()).toString(), loggable);
-        } else {
+        if (LOGGER.isWarnEnabled()) {
+            for (Throwable ex = exception;
+                        ex != null;
+                        ex = ex.getCause()) {
+                if (ex instanceof LoggableException) {
+                    message.addKeysAndValues(((LoggableException)ex).getLogInfo());
+                }
+            }
             LOGGER.warn(message.toString(), exception);
         }
     }
@@ -3282,10 +3340,10 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
     }
 
     private boolean areAllRecordTypesSince(@Nullable Collection<RecordType> recordTypes, @Nullable Integer oldMetaDataVersion) {
-        return recordTypes != null && oldMetaDataVersion != null && recordTypes.stream().allMatch(recordType -> {
+        return oldMetaDataVersion != null && (oldMetaDataVersion == -1 || (recordTypes != null && recordTypes.stream().allMatch(recordType -> {
             Integer sinceVersion = recordType.getSinceVersion();
             return sinceVersion != null && sinceVersion > oldMetaDataVersion;
-        });
+        })));
     }
 
     protected CompletableFuture<Void> rebuildOrMarkIndex(@Nonnull Index index, @Nonnull IndexState indexState,
@@ -3371,14 +3429,22 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
         long startTime = System.nanoTime();
         OnlineIndexer indexBuilder = OnlineIndexer.newBuilder().setRecordStore(this).setIndex(index).setRecordTypes(recordTypes).build();
         CompletableFuture<Void> future = indexBuilder.rebuildIndexAsync(this)
-                .thenCompose(vignore -> markIndexReadable(index)
-                        .handle((b, t) -> {
-                            // Only call method that builds in the current transaction, so never any pending work,
-                            // so it would work to close before returning future, which would look better to SonarQube.
-                            // But this is better if close ever does more.
-                            indexBuilder.close();
-                            return null;
-                        }));
+                .thenCompose(vignore -> markIndexReadable(index))
+                .handle((b, t) -> {
+                    if (t != null) {
+                        logExceptionAsWarn(KeyValueLogMessage.build("rebuilding index failed",
+                                LogMessageKeys.INDEX_NAME, index.getName(),
+                                LogMessageKeys.INDEX_VERSION, index.getLastModifiedVersion(),
+                                LogMessageKeys.REASON, reason.name(),
+                                subspaceProvider.logKey(), subspaceProvider.toString(context),
+                                LogMessageKeys.SUBSPACE_KEY, index.getSubspaceKey()), t);
+                    }
+                    // Only call method that builds in the current transaction, so never any pending work,
+                    // so it would work to close before returning future, which would look better to SonarQube.
+                    // But this is better if close ever does more.
+                    indexBuilder.close();
+                    return null;
+                });
 
         return context.instrument(FDBStoreTimer.Events.REBUILD_INDEX, future, startTime);
     }
@@ -3877,8 +3943,8 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
         }
         final Map<Key.Evaluated, Long> counts = new HashMap<>();
         final RecordCursor<FDBStoredRecord<Message>> records = scanRecords(null, ScanProperties.FORWARD_SCAN);
-        CompletableFuture<Void> future = records.forEach(record -> {
-            Key.Evaluated subkey = recordCountKey.evaluateSingleton(record);
+        CompletableFuture<Void> future = records.forEach(rec -> {
+            Key.Evaluated subkey = recordCountKey.evaluateSingleton(rec);
             counts.compute(subkey, (k, v) -> (v == null) ? 1 : v + 1);
         }).thenApply(vignore -> {
             final Transaction tr = ensureContextActive();
@@ -4022,8 +4088,8 @@ public class FDBRecordStore extends FDBStoreBase implements FDBRecordStoreBase<M
             return;
         }
 
-        final Message record = serializer.deserialize(metaData, recordKey, keyValue.getValue(), getTimer());
-        final RecordType recordType = metaData.getRecordTypeForDescriptor(record.getDescriptorForType());
+        final Message protoRecord = serializer.deserialize(metaData, recordKey, keyValue.getValue(), getTimer());
+        final RecordType recordType = metaData.getRecordTypeForDescriptor(protoRecord.getDescriptorForType());
 
         final KeyExpression primaryKeyExpression = recordType.getPrimaryKey();
 

@@ -20,7 +20,6 @@
 
 package com.apple.foundationdb.record.provider.foundationdb;
 
-import com.apple.foundationdb.EventKeeper;
 import com.apple.foundationdb.annotation.API;
 import com.apple.foundationdb.record.provider.common.RecordSerializer;
 import com.apple.foundationdb.record.provider.common.StoreTimer;
@@ -37,7 +36,7 @@ import java.util.stream.Stream;
  * A {@link StoreTimer} associated with {@link FDBRecordStore} operations.
  */
 @API(API.Status.STABLE)
-public class FDBStoreTimer extends StoreTimer implements EventKeeper {
+public class FDBStoreTimer extends StoreTimer {
 
     /**
      * Ordinary top-level events which surround a single body of code.
@@ -178,6 +177,8 @@ public class FDBStoreTimer extends StoreTimer implements EventKeeper {
         PLAN_QUERY("plan query"),
         /** The amount of time spent in {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryFilterPlan} as part of executing a query. */
         QUERY_FILTER("filter records"),
+        /** The amount of time spent in {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryStreamingAggregatePlan} as part of executing a query. */
+        QUERY_AGGREGATE("aggregate records"),
         /** The amount of time spent in {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryTypeFilterPlan} as part of executing a query. */
         QUERY_TYPE_FILTER("filter records by type"),
         /** The amount of time spent filtering by text contents in {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryTextIndexPlan} as part of executing a query. */
@@ -190,6 +191,10 @@ public class FDBStoreTimer extends StoreTimer implements EventKeeper {
         QUERY_DISTINCT("compare query records for distinct"),
         /** The amount of time spent in {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryUnorderedPrimaryKeyDistinctPlan} as part of executing a query. */
         QUERY_PK_DISTINCT("compare record primary key for distinct"),
+        /** The amount of time spent in {@link com.apple.foundationdb.record.query.plan.plans.RecordQuerySelectorPlan} as part of executing a query. */
+        QUERY_SELECTOR("execute one iteration of selected plan"),
+        /** The amount of time spent in {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryComparatorPlan} as part of executing a query. */
+        QUERY_COMPARATOR("execute multiple plans and compare results"),
         /** The amount of time spent in {@link com.apple.foundationdb.record.provider.foundationdb.leaderboard.TimeWindowLeaderboardDirectoryOperation}. */
         TIME_WINDOW_LEADERBOARD_GET_DIRECTORY("leaderboard get directory"),
         /** The amount of time spent in {@link com.apple.foundationdb.record.provider.foundationdb.leaderboard.TimeWindowLeaderboardWindowUpdate}. */
@@ -206,14 +211,8 @@ public class FDBStoreTimer extends StoreTimer implements EventKeeper {
         COMMITS("commits"),
         /** Time for FDB fetches.*/
         FETCHES("fetches"),
-        /** Time to read a block from Lucene's FDBDirectory.*/
-        LUCENE_READ_BLOCK("lucene block reads"),
-        /** Time to list all files from Lucene's FDBDirectory.*/
-        LUCENE_LIST_ALL("lucene list all"),
-        /** Number of getFileReference calls in the FDBDirectory.*/
-        LUCENE_GET_FILE_REFERENCE("lucene get file references"),
-        /** Number of documents returned from a single Lucene Index Scan. */
-        LUCENE_INDEX_SCAN("lucene search returned documents"),
+        /** Total lifetime of a transaction. */
+        TRANSACTION_TIME("transaction time")
         ;
 
         private final String title;
@@ -415,12 +414,6 @@ public class FDBStoreTimer extends StoreTimer implements EventKeeper {
         WAIT_EDIT_HEADER_USER_FIELD("wait to edit a header user field"),
         /** Wait to read a key from the FDB system keyspace. */
         WAIT_LOAD_SYSTEM_KEY("wait for reading a key from the FDB system keyspace"),
-        /** Wait to delete a file from Lucene's FDBDirectory.*/
-        WAIT_LUCENE_DELETE_FILE("lucene delete file"),
-        /** Time to get the length of the a file in Lucene's FDBDirectory.*/
-        WAIT_LUCENE_FILE_LENGTH("lucene file length"),
-        /** Time to rename a file in Lucene's FDBDirectory.*/
-        WAIT_LUCENE_RENAME("lucene rename"),
         /** Wait to perform validation of resolver reverse directory mapping. */
         WAIT_VALIDATE_RESOLVER("wait validating resolver"),
         ;
@@ -523,6 +516,8 @@ public class FDBStoreTimer extends StoreTimer implements EventKeeper {
         PLAN_COVERING_INDEX("number of covering index plans", false),
         /** The number of query plans that include a {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryFilterPlan}. */
         PLAN_FILTER("number of filter plans", false),
+        /** The number of query plans that include a {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryStreamingAggregatePlan}. */
+        PLAN_AGGREGATE("number of streaming aggregate plans", false),
         /** The number of query plans that include an index. */
         PLAN_INDEX("number of index plans", false),
         /** The number of query plans that include an {@code IN} with parameters. */
@@ -589,6 +584,20 @@ public class FDBStoreTimer extends StoreTimer implements EventKeeper {
         QUERY_UNION_PLAN_UNIQUES("number of unique records found by RecordQueryUnorderedDistinctPlan", false),
         /** The number of records filtered out as not matching or duplicate. */
         QUERY_DISCARDED("number of records loaded but filtered out", false),
+        /** The number of aggregate groups created by {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryStreamingAggregatePlan}. */
+        QUERY_AGGREGATE_GROUPS("number of aggregate groups", false),
+        /** The max size of aggregate group created by {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryStreamingAggregatePlan}. */
+        QUERY_AGGREGATE_GROUP_MAX_SIZE("max size of aggregate group", false),
+        /** The number of query plans that include a {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryComparatorPlan}. */
+        PLAN_COMPARATOR("number of comparator plans", false),
+        /** The number of query plans that include a {@link com.apple.foundationdb.record.query.plan.plans.RecordQuerySelectorPlan}. */
+        PLAN_SELECTOR("number of selector plans", false),
+        /** The number of matching records by {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryComparatorPlan}. */
+        QUERY_COMPARATOR_MATCH("number of records matched", false),
+        /** The number of comparison failures by {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryComparatorPlan}. */
+        QUERY_COMPARATOR_MISMATCH("number of record comparison mismatched", false),
+        /** The number of comparisons made by {@link com.apple.foundationdb.record.query.plan.plans.RecordQueryComparatorPlan}. */
+        QUERY_COMPARATOR_COMPARED("number of comparisons", false),
         /** The number of times the read version was taken from the cache of the last seen version. */
         SET_READ_VERSION_TO_LAST_SEEN("set read version to last seen version", false),
         /** The number of records scanned by {@link OnlineIndexer}. */
@@ -623,12 +632,16 @@ public class FDBStoreTimer extends StoreTimer implements EventKeeper {
         BYTES_READ("bytes read", true),
         /** The number of bytes written, not including deletes. */
         BYTES_WRITTEN("bytes written", true),
-        /** Total number of delete (clear) operations. */
+        /** Total number of read (get) operations. */
         READS("reads", false),
+        /** Total number of range read (get) operations. */
+        RANGE_READS("range reads", false),
         /** Total number of write operations. */
         WRITES("writes", false),
         /** Total number of delete (clear) operations. */
         DELETES("deletes", false),
+        /** Total number of range delete (clear) operations. */
+        RANGE_DELETES("range deletes", false),
         /** Total number of mutation operations. */
         MUTATIONS("mutations", false),
         /** JNI Calls.*/
@@ -641,18 +654,14 @@ public class FDBStoreTimer extends StoreTimer implements EventKeeper {
         RANGE_KEYVALUES_FETCHED("range key-values ",false ),
         /** Number of chunk reads that failed.*/
         CHUNK_READ_FAILURES("read fails",false ),
-        /** Number of times the getIncrement() function is called in the FDBDirectory. */
-        LUCENE_GET_INCREMENT_CALLS("lucene increments",false),
-        /** Number of writeFileReference calls in the FDBDirectory.*/
-        LUCENE_WRITE_FILE_REFERENCE_CALL("lucene write file references",false),
-        /** Total number of bytes that were attempted to be written (not necessarily committed) to the FDBDirectory.*/
-        LUCENE_WRITE_SIZE("lucene index size",true),
-        /** The number of block reads that occur against the FDBDirectory.*/
-        LUCENE_BLOCK_READS("lucene block reads", false),
-        /** Time to write a file references in Lucene's FDBDirectory.*/
-        LUCENE_WRITE_FILE_REFERENCE("lucene write file reference" ,false),
-        /** Matched documents returned from lucene index reader scans. **/
-        LUCENE_SCAN_MATCHED_DOCUMENTS("lucene scan matched documents", false),
+        /** Count of commits that failed for any reason. */
+        COMMITS_FAILED("commits failed", false),
+        /** Count failed due to conflict. */
+        CONFLICTS("conflicts", false),
+        /** Count failed due to commit_unknown. */
+        COMMIT_UNKNOWN("commit unknown", false),
+        /** Count failed due to transaction_too_large. */
+        TRANSACTION_TOO_LARGE("transaction too large", false),
         ;
 
         private final String title;
@@ -795,67 +804,5 @@ public class FDBStoreTimer extends StoreTimer implements EventKeeper {
         final long totalNanos = System.nanoTime() - startTime;
         getCounter(Events.TIMEOUTS, true).record(totalNanos);
         getTimeoutCounter(event, true).record(totalNanos);
-    }
-
-    @Override
-    public void count(final EventKeeper.Event event, final long amt) {
-        if (event instanceof EventKeeper.Events) {
-            EventKeeper.Events fdbEvent = (EventKeeper.Events)event;
-            switch (fdbEvent) {
-                case JNI_CALL:
-                    increment(Counts.JNI_CALLS, (int)amt);
-                    break;
-                case BYTES_FETCHED:
-                    increment(Counts.BYTES_FETCHED, (int)amt);
-                    break;
-                case RANGE_QUERY_FETCHES:
-                    increment(Counts.RANGE_FETCHES, (int)amt);
-                    break;
-                case RANGE_QUERY_RECORDS_FETCHED:
-                    increment(Counts.RANGE_KEYVALUES_FETCHED, (int)amt);
-                    break;
-                case RANGE_QUERY_CHUNK_FAILED:
-                    increment(Counts.CHUNK_READ_FAILURES, (int)amt);
-                    break;
-                case RANGE_QUERY_FETCH_TIME_NANOS:
-                    record(Events.FETCHES,(int)amt);
-                    break;
-                default:
-                    //do-nothing
-            }
-        }
-    }
-
-    @Override
-    public void timeNanos(final EventKeeper.Event event, final long nanos) {
-        count(event,nanos);
-    }
-
-    @Override
-    public long getCount(final EventKeeper.Event event) {
-        if (event instanceof EventKeeper.Events) {
-            EventKeeper.Events fdbEvent = (EventKeeper.Events)event;
-            switch (fdbEvent) {
-                case JNI_CALL:
-                    return getCount(Counts.JNI_CALLS);
-                case BYTES_FETCHED:
-                    return getCount(Counts.BYTES_FETCHED);
-                case RANGE_QUERY_FETCHES:
-                    return getCount(Counts.RANGE_FETCHES);
-                case RANGE_QUERY_RECORDS_FETCHED:
-                    return getCount(Counts.RANGE_KEYVALUES_FETCHED);
-                case RANGE_QUERY_CHUNK_FAILED:
-                    return getCount(Counts.CHUNK_READ_FAILURES);
-                default:
-                    //no-op
-            }
-        }
-        //by default, just return 0
-        return 0;
-    }
-
-    @Override
-    public long getTimeNanos(final EventKeeper.Event event) {
-        return getCount(event);
     }
 }

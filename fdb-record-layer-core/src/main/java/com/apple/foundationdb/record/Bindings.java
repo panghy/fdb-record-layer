@@ -21,10 +21,14 @@
 package com.apple.foundationdb.record;
 
 import com.apple.foundationdb.annotation.API;
+import com.google.common.base.Verify;
+import com.google.common.collect.ImmutableList;
+import org.apache.commons.lang3.tuple.Pair;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -58,6 +62,11 @@ public class Bindings {
 
         public String bindingName(@Nonnull String suffix) {
             return value + suffix;
+        }
+
+        public String identifier(@Nonnull String bindingName) {
+            Verify.verify(bindingName.startsWith(value));
+            return bindingName.substring(value.length());
         }
     }
 
@@ -104,6 +113,21 @@ public class Bindings {
 
     public Builder childBuilder() {
         return new Builder(this);
+    }
+
+    @Nonnull
+    public List<Pair<String, Object>> asMappingList() {
+        final ImmutableList.Builder<Pair<String, Object>> resultBuilder = ImmutableList.builder();
+        values.forEach((key, value) -> resultBuilder.add(Pair.of(key, value)));
+        if (parent != null) {
+            resultBuilder.addAll(parent.asMappingList());
+        }
+        return resultBuilder.build();
+    }
+
+    @Override
+    public String toString() {
+        return "Bindings(" + asMappingList() + ")";
     }
 
     /**

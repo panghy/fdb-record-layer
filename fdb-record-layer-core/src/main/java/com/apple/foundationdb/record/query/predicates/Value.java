@@ -21,6 +21,7 @@
 package com.apple.foundationdb.record.query.predicates;
 
 import com.apple.foundationdb.annotation.API;
+import com.apple.foundationdb.annotation.SpotBugsSuppressWarnings;
 import com.apple.foundationdb.record.EvaluationContext;
 import com.apple.foundationdb.record.PlanHashable;
 import com.apple.foundationdb.record.RecordCoreException;
@@ -31,9 +32,13 @@ import com.apple.foundationdb.record.query.expressions.Comparisons;
 import com.apple.foundationdb.record.query.plan.temp.AliasMap;
 import com.apple.foundationdb.record.query.plan.temp.Correlated;
 import com.apple.foundationdb.record.query.plan.temp.CorrelationIdentifier;
+import com.apple.foundationdb.record.query.plan.temp.CreatesDynamicTypesValue;
+import com.apple.foundationdb.record.query.plan.temp.Formatter;
 import com.apple.foundationdb.record.query.plan.temp.KeyExpressionVisitor;
 import com.apple.foundationdb.record.query.plan.temp.ScalarTranslationVisitor;
 import com.apple.foundationdb.record.query.plan.temp.TreeLike;
+import com.apple.foundationdb.record.query.plan.temp.Type;
+import com.apple.foundationdb.record.query.plan.temp.Typed;
 import com.apple.foundationdb.record.query.predicates.ValueComparisonRangePredicate.Placeholder;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -54,12 +59,71 @@ import java.util.stream.StreamSupport;
  * A scalar value type.
  */
 @API(API.Status.EXPERIMENTAL)
-public interface Value extends Correlated<Value>, TreeLike<Value>, PlanHashable, KeyExpressionVisitor.Result {
+public interface Value extends Correlated<Value>, TreeLike<Value>, PlanHashable, KeyExpressionVisitor.Result, Typed {
 
     @Nonnull
     @Override
     default Value getThis() {
         return this;
+    }
+
+    /**
+     * Returns the {@link Type} of the scalar value output.
+     * @return The {@link Type} of the scalar value output.
+     */
+    @Nonnull
+    @Override
+    default Type getResultType() {
+        return Type.primitiveType(Type.TypeCode.UNKNOWN);
+    }
+
+    /**
+     * Iterates over the entire expression tree collecting a set of all dynamically-generated types.
+     * A {@link Type} could be generated dynamically by a {@link Value} that e.g. encapsulates children {@link Type}s
+     * into a single structured type such as a {@link com.apple.foundationdb.record.query.plan.temp.Type.Record}.
+     *
+     * For more information, check implementations of {@link CreatesDynamicTypesValue} interface.
+     *
+     * @return A set of dynamically-generated {@link Type} by this {@link Value} and all of its children.
+     */
+    @SuppressWarnings("java:S4738")
+    @Nonnull
+    default Set<Type> getDynamicTypes() {
+        return fold(p -> {
+            if (p instanceof CreatesDynamicTypesValue) {
+                return ImmutableSet.of(p.getResultType());
+            }
+            return ImmutableSet.<Type>of();
+        }, (thisTypes, childTypeSets) -> {
+            final ImmutableSet.Builder<Type> nestedBuilder = ImmutableSet.builder();
+            for (final Set<Type> childTypes : childTypeSets) {
+                nestedBuilder.addAll(childTypes);
+            }
+            nestedBuilder.addAll(thisTypes);
+            return nestedBuilder.build();
+        });
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Nonnull
+    @Override
+    default String describe(@Nonnull final Formatter formatter) {
+        throw new UnsupportedOperationException("object of class " + this.getClass().getSimpleName() + " does not override explain");
+    }
+
+    /**
+     * evaluates computation of the expression at compile time and returns the result immediately.
+     *
+     * @param context The execution context.
+     * @return The expression output.
+     */
+    @Nullable
+    @SuppressWarnings({"java:S2637", "ConstantConditions"})
+    @SpotBugsSuppressWarnings(value = {"NP_NONNULL_PARAM_VIOLATION"}, justification = "compile-time evaluations take their value from the context only")
+    default Object compileTimeEval(@Nonnull final EvaluationContext context) {
+        return eval(null, context, null, null);
     }
 
     @Nullable
@@ -196,6 +260,12 @@ public interface Value extends Correlated<Value>, TreeLike<Value>, PlanHashable,
         return translationMap.getOrDefault(this, this);
     }
 
+    @Nonnull
+    default <V extends Value> V narrow(@Nonnull Class<V> narrowedClass) {
+        return narrowedClass.cast(this);
+    }
+
+    @Nonnull
     @Override
     default boolean semanticEquals(@Nullable final Object other,
                                    @Nonnull final AliasMap aliasMap) {
@@ -250,7 +320,7 @@ public interface Value extends Correlated<Value>, TreeLike<Value>, PlanHashable,
     }
 
     /**
-     * A scalar value type that can be evaluated.
+     * A scalar value type that cannot be evaluated.
      */
     @API(API.Status.EXPERIMENTAL)
     interface CompileTimeValue extends Value {
@@ -261,6 +331,22 @@ public interface Value extends Correlated<Value>, TreeLike<Value>, PlanHashable,
                                                 @Nullable FDBRecord<M> record,
                                                 @Nullable M message) {
             throw new RecordCoreException("value is compile-time only and cannot be evaluated");
+        }
+    }
+
+    /**
+     * A scalar value type that can only fetched from an index, that is the value cannot be fetched from the base record
+     * nor can it be computed "on-the-fly".
+     */
+    @API(API.Status.EXPERIMENTAL)
+    interface IndexOnlyValue extends Value {
+        @Nullable
+        @Override
+        default <M extends Message> Object eval(@Nonnull final FDBRecordStoreBase<M> store,
+                                                @Nonnull final EvaluationContext context,
+                                                @Nullable FDBRecord<M> record,
+                                                @Nullable M message) {
+            throw new RecordCoreException("value is index-only and cannot be evaluated");
         }
     }
 }

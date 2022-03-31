@@ -21,6 +21,9 @@
 package com.apple.foundationdb.record.lucene.directory;
 
 import com.apple.foundationdb.annotation.API;
+import com.apple.foundationdb.record.logging.KeyValueLogMessage;
+import com.apple.foundationdb.record.logging.LogMessageKeys;
+import com.apple.foundationdb.record.lucene.LuceneLogMessageKeys;
 import org.apache.lucene.store.IndexInput;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,7 +85,10 @@ public class FDBIndexInput extends IndexInput {
                          @Nonnull CompletableFuture<FDBLuceneFileReference> reference, long initalOffset, long position,
                          int currentBlock, @Nullable CompletableFuture<byte[]> currentData) throws IOException {
         super(resourceDescription);
-        LOGGER.trace("init() -> {}", resourceDescription);
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace(KeyValueLogMessage.of("init()",
+                    LuceneLogMessageKeys.RESOURCE, resourceDescription));
+        }
         this.resourceDescription = resourceDescription;
         this.fdbDirectory = fdbDirectory;
         this.reference = reference;
@@ -104,7 +110,10 @@ public class FDBIndexInput extends IndexInput {
      */
     @Override
     public void close() {
-        LOGGER.trace("close() -> resource={}, numberOfSeeks={}", resourceDescription, numberOfSeeks);
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace(getLogMessage("close()",
+                    LuceneLogMessageKeys.SEEK_NUM, numberOfSeeks));
+        }
     }
 
     /**
@@ -114,7 +123,10 @@ public class FDBIndexInput extends IndexInput {
      */
     @Override
     public long getFilePointer() {
-        LOGGER.trace("getFilePointer() -> resource={}, position={}", resourceDescription, position);
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace(getLogMessage("getFilePointer()",
+                    LuceneLogMessageKeys.POSITION, position));
+        }
         return position;
     }
 
@@ -129,12 +141,18 @@ public class FDBIndexInput extends IndexInput {
      */
     @Override
     public void seek(final long offset) throws IOException {
-        LOGGER.trace("seek -> resource={}, offset={}", resourceDescription, offset);
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace(getLogMessage("seek",
+                    LuceneLogMessageKeys.OFFSET, offset));
+        }
         if (currentBlock != getBlock(offset)) {
             this.position = offset;
             this.currentBlock = getBlock(position);
             numberOfSeeks++;
-            LOGGER.trace("actual seek -> resource={}, offset={}", resourceDescription, offset);
+            if (LOGGER.isTraceEnabled()) {
+                LOGGER.trace(getLogMessage("actual seek",
+                        LuceneLogMessageKeys.OFFSET, offset));
+            }
             this.currentData = fdbDirectory.readBlock(resourceDescription, reference, currentBlock); // Physical Seek
         } else {
             this.position = offset;     // Logical Seek
@@ -148,7 +166,9 @@ public class FDBIndexInput extends IndexInput {
      */
     @Override
     public long length() {
-        LOGGER.trace("length -> resource={}", resourceDescription);
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace(getLogMessage("length"));
+        }
         return reference.join().getSize();
     }
 
@@ -166,9 +186,14 @@ public class FDBIndexInput extends IndexInput {
     @Override
     @Nonnull
     public IndexInput slice(@Nonnull String sliceDescription, long offset, long length) throws IOException {
-        LOGGER.trace("slice -> resource={}, desc={}, offset={}, length={}", resourceDescription, sliceDescription, offset, length);
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace(getLogMessage("slice",
+                    LogMessageKeys.DESCRIPTION, sliceDescription,
+                    LuceneLogMessageKeys.OFFSET, offset,
+                    LuceneLogMessageKeys.LENGTH, length));
+        }
         return new FDBIndexInput(resourceDescription, fdbDirectory, CompletableFuture.completedFuture(
-                new FDBLuceneFileReference(reference.join().getId(), length, reference.join().getBlockSize())),
+                new FDBLuceneFileReference(reference.join().getId(), length, length, reference.join().getBlockSize())),
                 offset + initialOffset, 0L, currentBlock, currentData
                 );
     }
@@ -194,7 +219,9 @@ public class FDBIndexInput extends IndexInput {
      */
     @Override
     public byte readByte() throws IOException {
-        LOGGER.trace("readByte resource={}", resourceDescription);
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace(getLogMessage("readByte"));
+        }
         try {
             int probe = (int)(absolutePosition() % reference.join().getBlockSize());
             position++;
@@ -220,7 +247,11 @@ public class FDBIndexInput extends IndexInput {
      */
     @Override
     public void readBytes(@Nonnull final byte[] bytes, final int offset, final int length) {
-        LOGGER.trace("readBytes resource={}, offset={}, length={}", resourceDescription, offset, length);
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace(getLogMessage("readBytes",
+                    LuceneLogMessageKeys.OFFSET, offset,
+                    LuceneLogMessageKeys.LENGTH, length));
+        }
         int bytesRead = 0;
         long blockSize = reference.join().getBlockSize();
         while (bytesRead < length) {
@@ -232,8 +263,14 @@ public class FDBIndexInput extends IndexInput {
             if (absolutePosition() % blockSize == 0) {
                 currentBlock++;
                 numberOfSeeks++;
-                LOGGER.trace("hard seek resource={}, currentBlock={}, offset={}, length={}, position={}, initialOffset={}",
-                        resourceDescription, currentBlock, offset, length, position, initialOffset);
+                if (LOGGER.isTraceEnabled()) {
+                    LOGGER.trace(getLogMessage("hard seek",
+                            LuceneLogMessageKeys.CURRENT_BLOCK, currentBlock,
+                            LuceneLogMessageKeys.OFFSET, offset,
+                            LuceneLogMessageKeys.LENGTH, length,
+                            LuceneLogMessageKeys.POSITION, position,
+                            LuceneLogMessageKeys.INITIAL_OFFSET, initialOffset));
+                }
                 this.currentData = fdbDirectory.readBlock(resourceDescription, reference, currentBlock);
             }
         }
@@ -249,5 +286,13 @@ public class FDBIndexInput extends IndexInput {
      */
     private int getBlock(long position) {
         return (int) ( (position + initialOffset) / reference.join().getBlockSize());
+    }
+
+    @Nonnull
+    private String getLogMessage(@Nonnull String staticMsg, @Nullable final Object... keysAndValues) {
+        return KeyValueLogMessage.build(staticMsg, keysAndValues)
+                .addKeyAndValue(LogMessageKeys.SUBSPACE, fdbDirectory.getSubspace())
+                .addKeyAndValue(LuceneLogMessageKeys.RESOURCE, resourceDescription)
+                .toString();
     }
 }

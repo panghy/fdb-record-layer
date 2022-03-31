@@ -23,12 +23,12 @@ package com.apple.foundationdb.record.lucene;
 import com.apple.foundationdb.annotation.API;
 import com.apple.foundationdb.record.metadata.Index;
 import com.apple.foundationdb.record.metadata.IndexValidator;
-import com.apple.foundationdb.record.metadata.MetaDataValidator;
 import com.apple.foundationdb.record.provider.foundationdb.IndexMaintainer;
 import com.apple.foundationdb.record.provider.foundationdb.IndexMaintainerFactory;
 import com.apple.foundationdb.record.provider.foundationdb.IndexMaintainerState;
 import com.google.auto.service.AutoService;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.lucene.analysis.Analyzer;
 
 import javax.annotation.Nonnull;
 import java.util.Collections;
@@ -53,17 +53,13 @@ public class LuceneIndexMaintainerFactory implements IndexMaintainerFactory {
     @Nonnull
     @Override
     public IndexValidator getIndexValidator(@Nonnull Index index) {
-        return new IndexValidator(index) {
-            @Override
-            public void validate(@Nonnull MetaDataValidator metaDataValidator) {
-                // nothing to validate
-            }
-        };
+        return new LuceneIndexValidator(index);
     }
 
     @Override
     @Nonnull
     public IndexMaintainer getIndexMaintainer(@Nonnull final IndexMaintainerState state) {
-        return new LuceneIndexMaintainer(state, state.context.getExecutor(), new StandardAnalyzer());
+        final Pair<Analyzer, Analyzer> analyzerPair = LuceneAnalyzerRegistryImpl.instance().getLuceneAnalyzerPair(state.index);
+        return new LuceneIndexMaintainer(state, state.context.getExecutor(), analyzerPair.getLeft(), analyzerPair.getRight());
     }
 }
